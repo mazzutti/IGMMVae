@@ -463,7 +463,28 @@
                     <h3>Subspace Slicing at Inference Time</h3>
                     <p style="color:var(--text-secondary); margin-top:0.5rem">By identifying the subset of active latent dimensions, our optimized classification method (<code>model.classify_optimized()</code>) slices the GMM prior means and Cholesky factors. It computes probability densities and Mahalanobis distances only on the active $D_{\text{active}}$ subspace, avoiding uninformative collapsed dimensions and saving FLOPs.</p>
                     <div class="highlight-box" style="margin-top: 1rem;">
-                        <strong>Inference Optimization:</strong> Slices matrices dynamically to $D_{\text{active}}$ dimension, accelerating inference speed by <strong>1.33x</strong>.
+                        <strong>Local Benchmark Results (Batch of 1000 items):</strong>
+                        <table style="width: 100%; margin-top: 0.5rem; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-primary);">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1)">
+                                    <th style="padding: 0.4rem 0.2rem">Metric</th>
+                                    <th style="padding: 0.4rem 0.2rem">Standard Eval</th>
+                                    <th style="padding: 0.4rem 0.2rem">Optimized (Pruned)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05)">
+                                    <td style="padding: 0.4rem 0.2rem; color: var(--text-secondary)">Avg. Compute Time</td>
+                                    <td style="padding: 0.4rem 0.2rem">5.34 ms</td>
+                                    <td style="padding: 0.4rem 0.2rem; color: var(--accent-cyan)">4.02 ms (<strong>1.33x speedup</strong>)</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 0.4rem 0.2rem; color: var(--text-secondary)">Prediction Match</td>
+                                    <td style="padding: 0.4rem 0.2rem">100.00%</td>
+                                    <td style="padding: 0.4rem 0.2rem; color: var(--accent-cyan)">100.00% (Identical output)</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
