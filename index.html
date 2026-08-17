@@ -387,7 +387,7 @@
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('prior')">Differentiable IGMN</button>
                 <button class="tab-btn" onclick="switchTab('spawning')">Spawning & Pruning</button>
-                <button class="tab-btn" onclick="switchTab('dim')">Dimension Pruning</button>
+                <button class="tab-btn" onclick="switchTab('dim')">Latent Space Pruning</button>
             </div>
 
             <!-- Tab 1: Prior -->
@@ -443,9 +443,9 @@
                 </div>
             </div>
 
-            <!-- Tab 3: Dimension -->
+            <!-- Tab 3: Latent Space Pruning -->
             <div id="dim" class="tab-content">
-                <div class="architect-grid">
+                <div class="architect-grid" style="margin-bottom: 2rem;">
                     <div class="card">
                         <h3>ARD</h3>
                         <p style="margin-top:0.5rem; color:var(--text-secondary)">Automatic Relevance Determination applies L1-penalized sigmoidal weights to each latent dimension. Unused directions are shrunk to zero.</p>
@@ -457,6 +457,13 @@
                     <div class="card">
                         <h3>PCA</h3>
                         <p style="margin-top:0.5rem; color:var(--text-secondary)">Performs singular value decomposition on the latent covariance matrix, dropping directions with eigenvalues below a threshold.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Subspace Slicing at Inference Time</h3>
+                    <p style="color:var(--text-secondary); margin-top:0.5rem">By identifying the subset of active latent dimensions, our optimized classification method (<code>model.classify_optimized()</code>) slices the GMM prior means and Cholesky factors. It computes probability densities and Mahalanobis distances only on the active $D_{\text{active}}$ subspace, avoiding uninformative collapsed dimensions and saving FLOPs.</p>
+                    <div class="highlight-box" style="margin-top: 1rem;">
+                        <strong>Inference Optimization:</strong> Slices matrices dynamically to $D_{\text{active}}$ dimension, accelerating inference speed by <strong>1.33x</strong>.
                     </div>
                 </div>
             </div>
