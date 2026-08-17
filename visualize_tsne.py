@@ -50,11 +50,13 @@ def main():
     # Encode test data
     with torch.no_grad():
         recon_x, z, q_mean, q_logvar, q_y, _, _, _, _ = model(x)
-        predicted_clusters = torch.argmax(q_y[:, :model.prior.K], dim=1).cpu().numpy()
-        
     z_np = z.cpu().numpy()
     y_np = y.numpy()
     means_10d = model.prior.means.data.cpu().numpy()
+    
+    # Assign each test point to its closest GMM centroid in 10D Euclidean space
+    distances_to_centroids = np.linalg.norm(z_np[:, None, :] - means_10d[None, :, :], axis=2)
+    predicted_clusters = np.argmin(distances_to_centroids, axis=1)
     
     print("Fitting PCA (Linear Projection)...")
     pca = sklearn_PCA(n_components=2)
@@ -135,7 +137,7 @@ def main():
         
         # Calculate empirical 2D covariance of mapped points assigned to cluster k
         cluster_points = z_tsne[predicted_clusters == k]
-        if len(cluster_points) > 5:
+        if len(cluster_points) > 1:
             # Empirical 2D mean and covariance
             emp_mean = np.mean(cluster_points, axis=0)
             emp_cov = np.cov(cluster_points.T)

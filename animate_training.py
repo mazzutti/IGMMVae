@@ -129,11 +129,9 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
     means = model.prior.means.data.cpu().numpy()
     latent_dim = z_pts.shape[1]
     
-    # Predict clusters for empirical ellipses
-    with torch.no_grad():
-        z_tensor = torch.tensor(z_pts, dtype=torch.float32).to(device)
-        q_y_pts, _, _ = model.prior(z_tensor)
-        predicted_clusters = torch.argmax(q_y_pts[:, :model.prior.K], dim=1).cpu().numpy()
+    # Predict clusters for empirical ellipses using 10D Euclidean distance to GMM centroids
+    distances_to_centroids = np.linalg.norm(z_pts[:, None, :] - means[None, :, :], axis=2)
+    predicted_clusters = np.argmin(distances_to_centroids, axis=1)
         
     # Fit t-SNE to project 10D space to 2D
     from sklearn.manifold import TSNE
@@ -161,7 +159,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
         ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
         
         cluster_points = z_pts_2d[predicted_clusters == k]
-        if len(cluster_points) > 5:
+        if len(cluster_points) > 1:
             emp_cov = np.cov(cluster_points.T)
             eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
             order = eigenvalues.argsort()[::-1]
