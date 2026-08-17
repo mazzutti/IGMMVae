@@ -134,21 +134,25 @@ def main():
     for k in range(best_K):
         # Calculate empirical 2D covariance of mapped points assigned to cluster k
         cluster_points = z_tsne[predicted_clusters == k]
-        if len(cluster_points) > 1:
-            # Empirical 2D mean and covariance
-            emp_mean = np.mean(cluster_points, axis=0)
-            emp_cov = np.cov(cluster_points.T)
-            
+        if len(cluster_points) >= 1:
+            if len(cluster_points) > 1:
+                emp_mean = np.mean(cluster_points, axis=0)
+                emp_cov = np.cov(cluster_points.T)
+                
+                # Eigendecomposition of empirical 2D covariance
+                eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
+                order = eigenvalues.argsort()[::-1]
+                eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
+                angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
+                width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
+            else:
+                emp_mean = cluster_points[0]
+                angle = 0
+                width, height = 0.5, 0.5
+                
             # Plot centroid marker and text at emp_mean
             ax2.plot(emp_mean[0], emp_mean[1], 'x', color='white', markersize=10, markeredgewidth=2)
             ax2.text(emp_mean[0] + 0.5, emp_mean[1] + 0.5, f"C{k}", color='white', fontsize=10, fontweight='bold')
-            
-            # Eigendecomposition of empirical 2D covariance
-            eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
-            order = eigenvalues.argsort()[::-1]
-            eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
-            angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
-            width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
             
             el2 = Ellipse(
                 xy=(emp_mean[0], emp_mean[1]),

@@ -155,18 +155,27 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
     scatter = ax.scatter(z_pts_2d[:, 0], z_pts_2d[:, 1], c=labels, cmap='tab10', s=5, alpha=0.5, edgecolors='none')
     
     # Draw GMM ellipses using empirical covariance of projected points in 2D
+    emp_means_list = {}
     for k in range(len(means)):
-        ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
-        
         cluster_points = z_pts_2d[predicted_clusters == k]
-        if len(cluster_points) > 1:
-            emp_mean = np.mean(cluster_points, axis=0)
-            emp_cov = np.cov(cluster_points.T)
-            eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
-            order = eigenvalues.argsort()[::-1]
-            eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
-            angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
-            width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
+        if len(cluster_points) >= 1:
+            if len(cluster_points) > 1:
+                emp_mean = np.mean(cluster_points, axis=0)
+                emp_means_list[k] = emp_mean
+                emp_cov = np.cov(cluster_points.T)
+                eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
+                order = eigenvalues.argsort()[::-1]
+                eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
+                angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
+                width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
+            else:
+                emp_mean = cluster_points[0]
+                emp_means_list[k] = emp_mean
+                angle = 0
+                width, height = 0.5, 0.5
+            
+            # Plot centroid marker at emp_mean
+            ax.plot(emp_mean[0], emp_mean[1], 'x', color='white', markersize=8, markeredgewidth=2)
             
             ellipse = Ellipse(
                 xy=(emp_mean[0], emp_mean[1]),
@@ -180,6 +189,9 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
                 alpha=0.7
             )
             ax.add_patch(ellipse)
+        else:
+            emp_means_list[k] = means_2d[k]
+            ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
 
     # Decode and overlay digit predictions right above the GMM cluster centers!
     with torch.no_grad():
@@ -197,9 +209,12 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
             rgba[:, :, 2] = 0.1  # Blue
             rgba[:, :, 3] = digit_img  # Alpha is pixel intensity
             
+            # Get empirical mean coordinates for this cluster
+            emp_mean = emp_means_list.get(k, means_2d[k])
+            
             im = OffsetImage(rgba, zoom=0.7)
-            # Offset the floating digit slightly above the center marker (means_2d[k, 1] + 0.5)
-            ab = AnnotationBbox(im, (means_2d[k, 0], means_2d[k, 1] + 0.5), xycoords='data', frameon=False)
+            # Offset the floating digit slightly above the center marker (emp_mean[1] + 0.5)
+            ab = AnnotationBbox(im, (emp_mean[0], emp_mean[1] + 0.5), xycoords='data', frameon=False)
             ax.add_artist(ab)
             
     status_str = "Spawning: Active" if allow_spawning else "Spawning: Frozen"
