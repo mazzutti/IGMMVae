@@ -50,7 +50,7 @@ def main():
     # Encode test data
     with torch.no_grad():
         recon_x, z, q_mean, q_logvar, q_y, _, _, _, _ = model(x)
-        predicted_clusters = torch.argmax(q_y, dim=1).cpu().numpy()
+        predicted_clusters = torch.argmax(q_y[:, :model.prior.K], dim=1).cpu().numpy()
         
     z_np = z.cpu().numpy()
     y_np = y.numpy()
