@@ -129,11 +129,25 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
     means = model.prior.means.data.cpu().numpy()
     latent_dim = z_pts.shape[1]
     
-    # Fit PCA to project 10D space to 2D
-    pca_proj = sklearn_PCA(n_components=2)
-    z_pts_2d = pca_proj.fit_transform(z_pts)
-    means_2d = pca_proj.transform(means)
-    W = pca_proj.components_.T # (D, 2)
+    # Predict clusters for empirical ellipses
+    with torch.no_grad():
+        z_tensor = torch.tensor(z_pts, dtype=torch.float32).to(device)
+        q_y_pts, _, _ = model.prior(z_tensor)
+        predicted_clusters = torch.argmax(q_y_pts[:, :model.prior.K], dim=1).cpu().numpy()
+        
+    # Fit t-SNE to project 10D space to 2D
+    from sklearn.manifold import TSNE
+    combined_pts = np.concatenate([z_pts, means], axis=0)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    combined_tsne = tsne.fit_transform(combined_pts)
+    
+    # Normalize coordinates to $[-4, 4]$
+    tsne_min = combined_tsne.min(axis=0)
+    tsne_max = combined_tsne.max(axis=0)
+    combined_tsne_norm = -4.0 + 8.0 * (combined_tsne - tsne_min) / (tsne_max - tsne_min + 1e-8)
+    
+    z_pts_2d = combined_tsne_norm[:-len(means)]
+    means_2d = combined_tsne_norm[-len(means):]
     
     fig = plt.figure(figsize=(8, 6), facecolor='#121212')
     ax = plt.gca()
@@ -142,51 +156,16 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
     # Scatter plot in projected space
     scatter = ax.scatter(z_pts_2d[:, 0], z_pts_2d[:, 1], c=labels, cmap='tab10', s=5, alpha=0.5, edgecolors='none')
     
-    # Draw GMM ellipses projected into 2D
-    if model.prior.covariance_type == "diagonal":
-        logvars = model.prior.logvars.data.cpu().numpy()
-        vars_np = np.exp(logvars)
-        for k in range(len(means)):
-            ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
-            Sigma_full = np.diag(vars_np[k])
-            Sigma_2d = np.dot(W.T, np.dot(Sigma_full, W))
-            
-            eigenvalues, eigenvectors = np.linalg.eigh(Sigma_2d)
-            order = eigenvalues.argsort()[::-1]
-            eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
-            
-            angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
-            width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
-            
-            ellipse = Ellipse(
-                xy=(means_2d[k, 0], means_2d[k, 1]),
-                width=width,
-                height=height,
-                angle=angle,
-                edgecolor='white',
-                fc='none',
-                lw=1.5,
-                ls='--',
-                alpha=0.7
-            )
-            ax.add_patch(ellipse)
-    else:  # "full"
-        L_tril = torch.tril(model.prior.L_params, diagonal=-1)
-        diag_val = torch.diagonal(model.prior.L_params, dim1=1, dim2=2)
-        clamped_diag = torch.clamp(diag_val, min=-3.0, max=0.0)
-        L = L_tril + torch.diag_embed(torch.exp(clamped_diag))
-        L_np = L.data.cpu().numpy()
+    # Draw GMM ellipses using empirical covariance of projected points in 2D
+    for k in range(len(means)):
+        ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
         
-        for k in range(len(means)):
-            ax.plot(means_2d[k, 0], means_2d[k, 1], 'x', color='white', markersize=8, markeredgewidth=2)
-            L_k = L_np[k]
-            Sigma = np.dot(L_k, L_k.T)
-            Sigma_2d = np.dot(W.T, np.dot(Sigma, W))
-            
-            eigenvalues, eigenvectors = np.linalg.eigh(Sigma_2d)
+        cluster_points = z_pts_2d[predicted_clusters == k]
+        if len(cluster_points) > 5:
+            emp_cov = np.cov(cluster_points.T)
+            eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
             order = eigenvalues.argsort()[::-1]
             eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
-            
             angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
             width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
             
@@ -227,7 +206,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
     status_str = "Spawning: Active" if allow_spawning else "Spawning: Frozen"
     val_loss_str = f"Val Loss: {val_loss:.2f}" if val_loss is not None else "Val Loss: N/A"
     lr_str = f"LR: {lr:.5f}" if lr is not None else "LR: N/A"
-    plt.title(f"Dynamic GMM Structuring | Epoch {epoch} | Step {step} | K={len(means)} Clusters\n{status_str} | {val_loss_str} | {lr_str} (Projected {latent_dim}D -> 2D)", color='white', fontsize=11)
+    plt.title(f"Dynamic GMM Structuring | Epoch {epoch} | Step {step} | K={len(means)} Clusters\n{status_str} | {val_loss_str} | {lr_str} (Projected 10D -> 2D via t-SNE)", color='white', fontsize=11)
     
     xlim_min, xlim_max = np.percentile(z_pts_2d[:, 0], [1, 99])
     ylim_min, ylim_max = np.percentile(z_pts_2d[:, 1], [1, 99])

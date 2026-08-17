@@ -1,119 +1,119 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from sklearn.manifold import TSNE
+from PIL import Image, ImageDraw
 import os
+import shutil
 
 from model import GMVAE
-from train import compute_loss
 
-# Device
-device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu") # CPU for inference stability
 
-def train_and_get_model():
-    print("Training a model to generate the latent space interpolation...")
-    transform = transforms.Compose([transforms.ToTensor()])
-    train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+def main():
+    latent_dim = 10
     
-    # 2D latent space so we can visualize and interpolate easily
+    # 1. Load the trained best model
     model = GMVAE(
         input_dim=784,
-        hidden_dim=256,
-        latent_dim=2,
+        hidden_dim=512,
+        latent_dim=latent_dim,
         initial_K=2,
-        beta=0.5,
-        eta=9.0, # 2D threshold
-        dim_method="none"
-    ).to(device)
+        covariance_type="full"
+    )
     
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    checkpoint = torch.load("best_model.pt", map_location=device)
+    best_K = checkpoint["prior.means"].shape[0]
+    print(f"Loading checkpoint with K={best_K} clusters")
     
-    step_count = 0
-    spawn_cooldown = 150
-    last_spawn_step = -spawn_cooldown
-    
-    # Train for 4 epochs (fast and sufficient for clear digit shapes in 2D)
-    for epoch in range(1, 5):
-        model.train()
-        for x, _ in train_loader:
-            x = x.view(-1, 784).to(device)
-            recon_x, z, q_mean, q_logvar, q_y, d_sq, p_new, _, _ = model(x)
-            loss, _, _, _ = compute_loss(recon_x, x, q_mean, q_logvar, q_y, model.prior, 0.0, device)
-            
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            step_count += 1
-            if step_count - last_spawn_step >= spawn_cooldown:
-                max_p_new, max_idx = torch.max(p_new, dim=0)
-                if max_p_new.item() > 0.85 and model.prior.K < 8:
-                    new_mean = z[max_idx].detach()
-                    model.prior.spawn_component(new_mean)
-                    last_spawn_step = step_count
-                    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-                    
-        print(f"Epoch {epoch}/4 completed. Clusters: {model.prior.K}")
+    if model.prior.K != best_K:
+        model.prior.means = torch.nn.Parameter(torch.zeros(best_K, latent_dim))
+        model.prior.L_params = torch.nn.Parameter(torch.zeros(best_K, latent_dim, latent_dim))
+        model.prior.pi_logits = torch.nn.Parameter(torch.zeros(best_K))
+        model.prior.K = best_K
         
-    return model
-
-def create_interpolation_gif(model, filename="digits_interpolation.gif"):
+    model.load_state_dict(checkpoint)
     model.eval()
-    means = model.prior.means.data.cpu().numpy()
-    K = model.prior.K
     
-    print(f"Discovered GMM means: {K}")
-    
-    frames = []
-    steps_per_segment = 15
-    
-    # Generate the path: 0 -> 1 -> 2 -> ... -> K-1 -> 0
-    path_indices = list(range(K)) + [0]
+    # 2. Get test data to fit t-SNE for walk order sorting
+    transform = transforms.Compose([transforms.ToTensor()])
+    test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    test_loader = DataLoader(test_dataset, batch_size=1500, shuffle=False)
+    x, _ = next(iter(test_loader))
+    x = x.view(-1, 784)
     
     with torch.no_grad():
-        for i in range(len(path_indices) - 1):
-            start_mean = means[path_indices[i]]
-            end_mean = means[path_indices[i+1]]
+        _, z, _, _, _, _, _, _, _ = model(x)
+    z_np = z.numpy()
+    means = model.prior.means.data.numpy()
+    
+    print("Fitting t-SNE to sort cluster visit path...")
+    combined_pts = np.concatenate([z_np, means], axis=0)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    combined_tsne = tsne.fit_transform(combined_pts)
+    means_2d = combined_tsne[-best_K:]
+    
+    # Nearest neighbor walk starting from C0
+    unvisited = list(range(best_K))
+    walk_order = [0]
+    unvisited.remove(0)
+    
+    while unvisited:
+        curr = walk_order[-1]
+        distances = [np.linalg.norm(means_2d[curr] - means_2d[u]) for u in unvisited]
+        next_idx = unvisited[np.argmin(distances)]
+        walk_order.append(next_idx)
+        unvisited.remove(next_idx)
+    walk_order.append(0) # Loop back to start
+    
+    # 3. Interpolate frames in 10D space
+    print(f"Generating interpolation along walk path: {walk_order}")
+    frames = []
+    steps_per_segment = 20
+    
+    with torch.no_grad():
+        for i in range(len(walk_order) - 1):
+            start_10d = means[walk_order[i]]
+            end_10d = means[walk_order[i+1]]
             
             for step in range(steps_per_segment):
                 t = step / steps_per_segment
-                # Linear interpolation
-                z_val = (1 - t) * start_mean + t * end_mean
-                z_tensor = torch.tensor(z_val, dtype=torch.float32).unsqueeze(0).to(device)
+                # 10D Linear interpolation
+                z_val = (1.0 - t) * start_10d + t * end_10d
+                z_tensor = torch.tensor(z_val, dtype=torch.float32).unsqueeze(0)
                 
-                # Decode to get image
-                recon = model.decode(z_tensor).cpu().numpy().reshape(28, 28)
+                # Decode to image
+                recon = model.decode(z_tensor).numpy().reshape(28, 28)
+                recon = np.clip(recon, 0.0, 1.0)
                 
-                # Convert to PIL Image
+                # Render frame
                 img_data = (recon * 255).astype(np.uint8)
                 img = Image.fromarray(img_data)
-                
-                # Resize (upscale) using nearest neighbor to preserve pixel art style or bilinear for smooth
                 img = img.resize((280, 280), Image.Resampling.BILINEAR)
                 
-                # Add text label of current cluster source
+                # Draw text annotation
                 draw = ImageDraw.Draw(img)
-                # Drawing a small marker/text indicating transition
-                draw.text((10, 10), f"From Cluster {path_indices[i]} to {path_indices[i+1]}", fill=255)
+                draw.text((10, 10), f"Centroid C{walk_order[i]} -> C{walk_order[i+1]}", fill=255)
                 
                 frames.append(img)
                 
-    # Save the animation
+    # 4. Save and copy the looping GIF
+    out_filename = "digits_interpolation.gif"
     frames[0].save(
-        filename,
+        out_filename,
         save_all=True,
         append_images=frames[1:],
         optimize=False,
-        duration=80, # ms per frame
+        duration=70, # ms per frame
         loop=0
     )
-    print(f"Animation saved as {filename}")
+    print(f"Looping interpolation GIF saved to {out_filename}")
+    
+    # Copy to artifacts
+    artifact_path = "/Users/mazzutti/.gemini/antigravity-cli/brain/6cc502c9-3dcf-4f62-88dd-78d793a2ff6e/digits_interpolation.gif"
+    shutil.copy(out_filename, artifact_path)
+    print("Copied morphing GIF to artifacts!")
 
 if __name__ == "__main__":
-    model = train_and_get_model()
-    create_interpolation_gif(model, "/Users/mazzutti/Downloads/IGMNVae/digits_interpolation.gif")
+    main()
