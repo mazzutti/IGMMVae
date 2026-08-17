@@ -150,7 +150,7 @@ def main():
             width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
             
             el2 = Ellipse(
-                xy=(means_tsne[k, 0], means_tsne[k, 1]),
+                xy=(emp_mean[0], emp_mean[1]),
                 width=width,
                 height=height,
                 angle=angle,

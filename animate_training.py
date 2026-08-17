@@ -160,6 +160,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
         
         cluster_points = z_pts_2d[predicted_clusters == k]
         if len(cluster_points) > 1:
+            emp_mean = np.mean(cluster_points, axis=0)
             emp_cov = np.cov(cluster_points.T)
             eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
             order = eigenvalues.argsort()[::-1]
@@ -168,7 +169,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, allow_spaw
             width, height = 4 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
             
             ellipse = Ellipse(
-                xy=(means_2d[k, 0], means_2d[k, 1]),
+                xy=(emp_mean[0], emp_mean[1]),
                 width=width,
                 height=height,
                 angle=angle,
