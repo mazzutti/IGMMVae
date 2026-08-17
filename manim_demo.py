@@ -2,7 +2,7 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import numpy as np
-from sklearn.decomposition import PCA as sklearn_PCA
+from sklearn.manifold import TSNE
 import os
 import shutil
 from PIL import Image
@@ -10,7 +10,7 @@ from PIL import Image
 # Manim import
 from manim import *
 
-# Pre-generate frames for Manim
+# Pre-generate frames for Manim using t-SNE
 def pregenerate_frames(model_path="best_model.pt"):
     device = torch.device("cpu") # Keep on CPU for stability
     latent_dim = 10
@@ -37,32 +37,45 @@ def pregenerate_frames(model_path="best_model.pt"):
     model.load_state_dict(checkpoint)
     model.eval()
     
-    # Get test data to fit PCA projection (10D -> 2D)
+    # Get test data to fit t-SNE projection
     transform = transforms.Compose([transforms.ToTensor()])
     test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-    test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
-    x, _ = next(iter(test_loader))
+    test_loader = DataLoader(test_dataset, batch_size=1500, shuffle=False)
+    x, y = next(iter(test_loader))
     x = x.view(-1, 784)
     
     with torch.no_grad():
-        _, z, _, _, _, _, _, _, _ = model(x)
+        _, z, _, _, q_y, _, _, _, _ = model(x)
+        predicted_clusters = torch.argmax(q_y, dim=1).numpy()
         
     z_np = z.numpy()
-    pca = sklearn_PCA(n_components=2)
-    pca.fit(z_np)
-    W = pca.components_.T # (10, 2)
-    
-    # Get means and Cholesky covariances
     means = model.prior.means.data.numpy()
-    means_2d = pca.transform(means)
     
-    L_tril = torch.tril(model.prior.L_params, diagonal=-1)
-    diag_val = torch.diagonal(model.prior.L_params, dim1=1, dim2=2)
-    clamped_diag = torch.clamp(diag_val, min=-3.0, max=0.0)
-    L = L_tril + torch.diag_embed(torch.exp(clamped_diag))
-    L_np = L.data.numpy()
+    print("Fitting t-SNE (Topological Projection 10D -> 2D)...")
+    # Combine latent points and GMM cluster centers to project them together
+    combined_pts = np.concatenate([z_np, means], axis=0)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    combined_tsne = tsne.fit_transform(combined_pts)
     
-    # Determine the order of visiting cluster centers
+    # Normalize t-SNE coordinates to fit beautifully in the axes range [-4.0, 4.0]
+    tsne_min = combined_tsne.min(axis=0)
+    tsne_max = combined_tsne.max(axis=0)
+    combined_tsne_norm = -4.0 + 8.0 * (combined_tsne - tsne_min) / (tsne_max - tsne_min + 1e-8)
+    
+    z_tsne = combined_tsne_norm[:-best_K]
+    means_2d = combined_tsne_norm[-best_K:]
+    
+    # Compute empirical 2D covariances of normalized coordinates assigned to each cluster
+    cov_2d_list = []
+    for k in range(best_K):
+        pts_k = z_tsne[predicted_clusters == k]
+        if len(pts_k) > 5:
+            cov_k = np.cov(pts_k.T)
+        else:
+            cov_k = np.eye(2) * 0.1
+        cov_2d_list.append(cov_k)
+        
+    # Determine the order of visiting cluster centers (sorted coordinate path)
     unvisited = list(range(best_K))
     walk_order = [0]
     unvisited.remove(0)
@@ -75,22 +88,34 @@ def pregenerate_frames(model_path="best_model.pt"):
         unvisited.remove(next_idx)
     walk_order.append(0) # Loop back to start
     
+    # Interpolate path in the 10D space along the walk order
     steps_per_segment = 25
     path_10d = []
+    path_2d_points = []
     
     for i in range(len(walk_order) - 1):
         start_10d = means[walk_order[i]]
         end_10d = means[walk_order[i+1]]
+        
+        start_2d = means_2d[walk_order[i]]
+        end_2d = means_2d[walk_order[i+1]]
+        
         for t in np.linspace(0.0, 1.0, steps_per_segment, endpoint=False):
-            pt = start_10d * (1.0 - t) + end_10d * t
-            path_10d.append(pt)
+            # 10D interpolation for Decoder generation
+            pt_10d = start_10d * (1.0 - t) + end_10d * t
+            path_10d.append(pt_10d)
+            
+            # 2D interpolation for visual walking dot
+            pt_2d = start_2d * (1.0 - t) + end_2d * t
+            path_2d_points.append(pt_2d)
+            
+    # Add final frame
     path_10d.append(means[walk_order[-1]])
+    path_2d_points.append(means_2d[walk_order[-1]])
     
     # Reconstruct images for each path coordinate
     shutil.rmtree("scratch/manim_frames", ignore_errors=True)
     os.makedirs("scratch/manim_frames", exist_ok=True)
-    
-    path_2d_points = []
     
     with torch.no_grad():
         for idx, pt in enumerate(path_10d):
@@ -104,16 +129,12 @@ def pregenerate_frames(model_path="best_model.pt"):
             img_pil = img_pil.resize((128, 128), Image.Resampling.LANCZOS)
             img_pil.save(f"scratch/manim_frames/frame_{idx}.png")
             
-            # Save corresponding 2D projected coordinate
-            pt_2d = pca.transform(pt.reshape(1, -1))[0]
-            path_2d_points.append(pt_2d)
-            
-    return means_2d, L_np, W, path_2d_points, len(path_10d)
+    return means_2d, cov_2d_list, path_2d_points, len(path_10d)
 
 
 # Run pre-generation before scene rendering
-print("Pre-generating digit reconstruction frames...")
-means_2d, L_np, W, path_2d, num_frames = pregenerate_frames()
+print("Pre-generating digit reconstruction frames using t-SNE...")
+means_2d, cov_2d_list, path_2d, num_frames = pregenerate_frames()
 
 class GMVAE_Demo(Scene):
     def construct(self):
@@ -129,7 +150,7 @@ class GMVAE_Demo(Scene):
         self.play(FadeIn(title), Write(subtitle))
         self.wait(0.5)
         
-        # 1. Left side: Latent Space axes and GMM ellipses
+        # 1. Left side: Latent Space axes (t-SNE topological projection)
         axes = NumberPlane(
             x_range=[-5, 5, 2],
             y_range=[-5, 5, 2],
@@ -139,16 +160,15 @@ class GMVAE_Demo(Scene):
         )
         axes.shift(LEFT * 3)
         
-        latent_label = Text("Latent Space (Projected 2D)", font_size=16, color=LIGHT_GRAY)
+        latent_label = Text("Latent Space (Projected 2D via t-SNE)", font_size=14, color=LIGHT_GRAY)
         latent_label.next_to(axes, DOWN, buff=0.2)
         
         self.play(Create(axes), FadeIn(latent_label))
         
-        # Draw clusters
+        # Draw clusters and empirical ellipses
         cluster_dots = VGroup()
         ellipses = VGroup()
         
-        # Colors for clusters
         colors = [RED, BLUE, GREEN, YELLOW, ORANGE, PURPLE, PINK, TEAL, GOLD, MAROON]
         
         for k in range(len(means_2d)):
@@ -159,11 +179,8 @@ class GMVAE_Demo(Scene):
             dot = Cross(stroke_width=2, scale_factor=0.15).move_to(screen_pos)
             dot.set_color(colors[k % len(colors)])
             
-            # Covariance Ellipse Sigma_2D = W^T * Sigma_k * W
-            L_k = L_np[k]
-            Sigma_k = np.dot(L_k, L_k.T)
-            Sigma_2d = np.dot(W.T, np.dot(Sigma_k, W))
-            
+            # Compute visual ellipse from empirical covariance
+            Sigma_2d = cov_2d_list[k]
             eigenvalues, eigenvectors = np.linalg.eigh(Sigma_2d)
             order = eigenvalues.argsort()[::-1]
             eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
@@ -174,7 +191,6 @@ class GMVAE_Demo(Scene):
             scale_x = axes.x_length / (axes.x_range[1] - axes.x_range[0])
             scale_y = axes.y_length / (axes.y_range[1] - axes.y_range[0])
             
-            # Create Ellipse and rotate it using the .rotate method
             el = Ellipse(
                 width=width * scale_x * 2.0, 
                 height=height * scale_y * 2.0, 
@@ -202,7 +218,6 @@ class GMVAE_Demo(Scene):
         # 3. Dynamic updater: walking dot and updating image
         frame_tracker = ValueTracker(0)
         
-        # Walk Dot
         first_pos = axes.c2p(path_2d[0][0], path_2d[0][1])
         walk_dot = Dot(color=YELLOW, radius=0.12).move_to(first_pos)
         walk_dot_halo = Dot(color=YELLOW, radius=0.25, fill_opacity=0.3).move_to(first_pos)
@@ -211,7 +226,6 @@ class GMVAE_Demo(Scene):
         self.play(FadeIn(walk_dot), FadeIn(walk_dot_halo))
         self.add(walk_dot_halo)
         
-        # Arrow connecting Latent dot to Decoder Box
         arrow = Arrow(
             start=axes.get_right() + RIGHT * 0.2, 
             end=recon_box.get_left() - RIGHT * 0.2, 
@@ -221,7 +235,6 @@ class GMVAE_Demo(Scene):
         decoder_text = Text("VAE Decoder", font_size=12, color=BLUE_A).next_to(arrow, UP, buff=0.1)
         self.play(GrowArrow(arrow), FadeIn(decoder_text))
         
-        # Redraw reconstructed digit image based on frame tracker
         def get_digit_mobject():
             idx = int(frame_tracker.get_value())
             idx = min(max(0, idx), num_frames - 1)
@@ -233,7 +246,7 @@ class GMVAE_Demo(Scene):
         digit_mobject = always_redraw(get_digit_mobject)
         self.add(digit_mobject)
         
-        # Move dot along the 2D path while incrementing frame tracker
+        # Move dot along the 2D t-SNE path
         def update_dot_position(m):
             idx = int(frame_tracker.get_value())
             idx = min(max(0, idx), num_frames - 1)
@@ -244,7 +257,7 @@ class GMVAE_Demo(Scene):
         
         self.play(
             frame_tracker.animate.set_value(num_frames - 1),
-            run_time=15,
+            run_time=18, # Slightly longer walk for 10 clusters
             rate_func=linear
         )
         
