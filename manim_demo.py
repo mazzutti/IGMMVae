@@ -65,15 +65,20 @@ def pregenerate_frames(model_path="best_model.pt"):
     z_tsne = combined_tsne_norm[:-best_K]
     means_2d = combined_tsne_norm[-best_K:]
     
-    # Compute empirical 2D covariances of normalized coordinates assigned to each cluster
+    # Compute empirical 2D means and covariances of normalized coordinates assigned to each cluster
+    means_2d_empirical = []
     cov_2d_list = []
     for k in range(best_K):
         pts_k = z_tsne[predicted_clusters == k]
-        if len(pts_k) > 5:
+        if len(pts_k) > 1:
+            emp_mean = np.mean(pts_k, axis=0)
             cov_k = np.cov(pts_k.T)
         else:
+            emp_mean = means_2d[k]
             cov_k = np.eye(2) * 0.1
+        means_2d_empirical.append(emp_mean)
         cov_2d_list.append(cov_k)
+    means_2d_empirical = np.array(means_2d_empirical)
         
     # Determine the order of visiting cluster centers (sorted coordinate path)
     unvisited = list(range(best_K))
@@ -82,7 +87,7 @@ def pregenerate_frames(model_path="best_model.pt"):
     
     while unvisited:
         curr = walk_order[-1]
-        distances = [np.linalg.norm(means_2d[curr] - means_2d[u]) for u in unvisited]
+        distances = [np.linalg.norm(means_2d_empirical[curr] - means_2d_empirical[u]) for u in unvisited]
         next_idx = unvisited[np.argmin(distances)]
         walk_order.append(next_idx)
         unvisited.remove(next_idx)
@@ -97,8 +102,8 @@ def pregenerate_frames(model_path="best_model.pt"):
         start_10d = means[walk_order[i]]
         end_10d = means[walk_order[i+1]]
         
-        start_2d = means_2d[walk_order[i]]
-        end_2d = means_2d[walk_order[i+1]]
+        start_2d = means_2d_empirical[walk_order[i]]
+        end_2d = means_2d_empirical[walk_order[i+1]]
         
         for t in np.linspace(0.0, 1.0, steps_per_segment, endpoint=False):
             # 10D interpolation for Decoder generation
@@ -111,7 +116,7 @@ def pregenerate_frames(model_path="best_model.pt"):
             
     # Add final frame
     path_10d.append(means[walk_order[-1]])
-    path_2d_points.append(means_2d[walk_order[-1]])
+    path_2d_points.append(means_2d_empirical[walk_order[-1]])
     
     # Reconstruct images for each path coordinate
     shutil.rmtree("scratch/manim_frames", ignore_errors=True)
@@ -129,7 +134,7 @@ def pregenerate_frames(model_path="best_model.pt"):
             img_pil = img_pil.resize((128, 128), Image.Resampling.LANCZOS)
             img_pil.save(f"scratch/manim_frames/frame_{idx}.png")
             
-    return means_2d, cov_2d_list, path_2d_points, len(path_10d)
+    return means_2d_empirical, cov_2d_list, path_2d_points, len(path_10d)
 
 
 # Run pre-generation before scene rendering
