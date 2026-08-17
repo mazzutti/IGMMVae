@@ -132,15 +132,16 @@ def main():
     )
     
     for k in range(best_K):
-        ax2.plot(means_tsne[k, 0], means_tsne[k, 1], 'x', color='white', markersize=10, markeredgewidth=2)
-        ax2.text(means_tsne[k, 0] + 0.5, means_tsne[k, 1] + 0.5, f"C{k}", color='white', fontsize=10, fontweight='bold')
-        
         # Calculate empirical 2D covariance of mapped points assigned to cluster k
         cluster_points = z_tsne[predicted_clusters == k]
         if len(cluster_points) > 1:
             # Empirical 2D mean and covariance
             emp_mean = np.mean(cluster_points, axis=0)
             emp_cov = np.cov(cluster_points.T)
+            
+            # Plot centroid marker and text at emp_mean
+            ax2.plot(emp_mean[0], emp_mean[1], 'x', color='white', markersize=10, markeredgewidth=2)
+            ax2.text(emp_mean[0] + 0.5, emp_mean[1] + 0.5, f"C{k}", color='white', fontsize=10, fontweight='bold')
             
             # Eigendecomposition of empirical 2D covariance
             eigenvalues, eigenvectors = np.linalg.eigh(emp_cov)
