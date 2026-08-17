@@ -61,6 +61,14 @@ We implemented 3 versions to dynamically determine `latent_dim`:
 | **KL-Pruning** | ![KL Pruning](./latent_space_kl-pruning.png) |
 | **PCA** | ![PCA](./latent_space_pca.png) |
 
+## PCA vs t-SNE Latent Space Visualization
+
+Below is the side-by-side comparison between **PCA (Linear Projection)** and **t-SNE (Topological Projection)**:
+- **PCA** preserves global linear variance, displaying GMM ellipses analytically projected using the transformation matrix $W$.
+- **t-SNE** preserves non-linear neighborhood topology. Since non-linear projections warp Gaussian coordinates, the ellipses are calculated **empirically** based on the 2D covariances of the points assigned to each cluster.
+
+![Latent Space Comparison](./latent_space_comparison.png)
+
 ---
 
 ## Subspace Pruning Performance Benchmark
