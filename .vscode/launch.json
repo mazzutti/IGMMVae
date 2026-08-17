@@ -1,0 +1,89 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train: Default (Full Covariance)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--covariance_type", "full",
+                "--epochs", "6",
+                "--latent_dim", "10"
+            ]
+        },
+        {
+            "name": "Train: Diagonal Covariance",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--covariance_type", "diagonal",
+                "--epochs", "6",
+                "--latent_dim", "10"
+            ]
+        },
+        {
+            "name": "Train: ARD dimension selection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dim_method", "ard",
+                "--ard_lambda", "1e-3",
+                "--epochs", "6",
+                "--latent_dim", "10"
+            ]
+        },
+        {
+            "name": "Train: KL-Pruning dimension selection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dim_method", "kl-pruning",
+                "--var_threshold", "0.05",
+                "--epochs", "6",
+                "--latent_dim", "10"
+            ]
+        },
+        {
+            "name": "Train: PCA dimension selection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dim_method", "pca",
+                "--pca_threshold", "0.01",
+                "--epochs", "6",
+                "--latent_dim", "10"
+            ]
+        },
+        {
+            "name": "Animate: Training Evolution (GMM + Digits)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/animate_training.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Animate: Latent Walk Morphing",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/animate.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run: Performance Benchmark",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/benchmark.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}
