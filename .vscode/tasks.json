@@ -1,0 +1,30 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Full Pipeline",
+            "type": "shell",
+            "command": "python3 run_pipeline.py",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Render Manim Video & GIF",
+            "type": "shell",
+            "command": "manim -qm manim_demo.py GMVAE_Demo && ffmpeg -y -i media/videos/manim_demo/720p30/GMVAE_Demo.mp4 -vf 'fps=15,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 manim_demo.gif",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

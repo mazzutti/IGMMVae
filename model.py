@@ -4,10 +4,11 @@ import torch.nn.functional as F
 
 from encoder import Encoder
 from decoder import Decoder
-from igmn import DifferentiableIGMN
+from igmm import DifferentiableIGMM
 
 class GMVAE(nn.Module):
-    def __init__(self, input_dim=784, hidden_dim=256, latent_dim=10, initial_K=2, beta=1.0, eta=18.0,
+    def __init__(self, input_dim=784, hidden_dim=256, latent_dim=10, initial_K=2, beta=1.0, eta=None,
+                 tau=0.1, delta=0.2, sp_min=5.0, v_min=200, reg_value=1e-5, max_nc=50,
                  dim_method="none", ard_lambda=1e-3, var_threshold=0.05, pca_threshold=0.01, covariance_type="full"):
         super().__init__()
         self.input_dim = input_dim
@@ -21,8 +22,20 @@ class GMVAE(nn.Module):
         # Encoder
         self.encoder_module = Encoder(input_dim, hidden_dim, latent_dim)
         
-        # Prior (Differentiable IGMN)
-        self.prior = DifferentiableIGMN(latent_dim, initial_K, beta, eta, covariance_type)
+        # Prior (Differentiable IGMM with full original IGMN parameters)
+        self.prior = DifferentiableIGMM(
+            latent_dim=latent_dim,
+            initial_K=initial_K,
+            tau=tau,
+            delta=delta,
+            sp_min=sp_min,
+            v_min=v_min,
+            reg_value=reg_value,
+            max_nc=max_nc,
+            beta=beta,
+            eta=eta,
+            covariance_type=covariance_type
+        )
         
         # Decoder
         self.decoder_module = Decoder(input_dim, hidden_dim, latent_dim)
@@ -135,7 +148,7 @@ class GMVAE(nn.Module):
         # Slice mean vector to active dimensions only
         q_mean_active = q_mean[:, active_idx]
         
-        # 3. Compute active GMM responsibilities
+        # 3. Compute active IGMM responsibilities
         active_means = self.prior.means[:, active_idx]
         pi = self.prior.pi
         

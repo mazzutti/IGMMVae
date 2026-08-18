@@ -12,28 +12,19 @@ if device.type == "mps":
 print("Benchmarking on device:", device)
 
 def main():
-    # Load model configuration
-    latent_dim = 10
+    checkpoint = torch.load("best_model.pt", map_location=device)
+    latent_dim = checkpoint["prior.means"].shape[1]
+    best_K = checkpoint["prior.means"].shape[0]
+    print(f"Loading checkpoint with K={best_K} IGMM components (latent_dim={latent_dim})")
     
     model = GMVAE(
         input_dim=784,
         hidden_dim=512,
         latent_dim=latent_dim,
-        initial_K=2,
+        initial_K=best_K,
         covariance_type="full"
     ).to(device)
     
-    # Load checkpoint and dynamically adjust model K
-    checkpoint = torch.load("best_model.pt")
-    best_K = checkpoint["prior.means"].shape[0]
-    print(f"Loading checkpoint with K={best_K} GMM components")
-    
-    if model.prior.K != best_K:
-        model.prior.means = torch.nn.Parameter(torch.zeros(best_K, latent_dim).to(device))
-        model.prior.L_params = torch.nn.Parameter(torch.zeros(best_K, latent_dim, latent_dim).to(device))
-        model.prior.pi_logits = torch.nn.Parameter(torch.zeros(best_K).to(device))
-        model.prior.K = best_K
-        
     model.load_state_dict(checkpoint)
     model.eval()
     
@@ -57,7 +48,7 @@ def main():
             standard_preds = torch.argmax(q_y[:, :model.prior.K], dim=1)
     standard_time = (time.perf_counter() - start_time) * 1000 / 100
     
-    # Benchmark 2: Optimized Sliced Classification (Active dimensions and GMM submatrices)
+    # Benchmark 2: Optimized Sliced Classification (Active dimensions and IGMM submatrices)
     start_time = time.perf_counter()
     for _ in range(100):
         with torch.no_grad():
@@ -70,7 +61,7 @@ def main():
     active_dims = len(model.get_active_latent_indices())
     print("\n--- BENCHMARK RESULTS (1000 items batch) ---")
     print(f"Active Latent Dimensions: {active_dims} / {latent_dim}")
-    print(f"Active IGMN Clusters: {best_K}")
+    print(f"Active IGMM Clusters: {best_K}")
     print(f"Standard Classification Time: {standard_time:.2f} ms")
     print(f"Optimized Classification Time: {opt_time:.2f} ms")
     print(f"Speedup: {standard_time / opt_time:.2f}x faster")

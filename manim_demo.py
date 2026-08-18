@@ -13,30 +13,25 @@ from manim import *
 # Pre-generate frames for Manim using t-SNE
 def pregenerate_frames(model_path="best_model.pt"):
     device = torch.device("cpu") # Keep on CPU for stability
-    latent_dim = 10
+    checkpoint = torch.load(model_path, map_location=device)
+    latent_dim = checkpoint["prior.means"].shape[1]
+    best_K = checkpoint["prior.means"].shape[0]
     
     from model import GMVAE
     model = GMVAE(
         input_dim=784,
         hidden_dim=512,
         latent_dim=latent_dim,
-        initial_K=2,
+        initial_K=best_K,
         covariance_type="full"
     )
     
-    # Load model and dynamically adjust parameter sizes
-    checkpoint = torch.load(model_path, map_location=device)
-    best_K = checkpoint["prior.means"].shape[0]
-    
-    if model.prior.K != best_K:
-        model.prior.means = torch.nn.Parameter(torch.zeros(best_K, latent_dim))
-        model.prior.L_params = torch.nn.Parameter(torch.zeros(best_K, latent_dim, latent_dim))
-        model.prior.pi_logits = torch.nn.Parameter(torch.zeros(best_K))
-        model.prior.K = best_K
-        
     model.load_state_dict(checkpoint)
     model.eval()
     
+    torch.manual_seed(42)
+    np.random.seed(42)
+
     # Get test data to fit t-SNE projection
     transform = transforms.Compose([transforms.ToTensor()])
     test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
@@ -45,14 +40,12 @@ def pregenerate_frames(model_path="best_model.pt"):
     x = x.view(-1, 784)
     
     with torch.no_grad():
-        _, z, _, _, q_y, _, _, _, _ = model(x)
-        predicted_clusters = torch.argmax(q_y, dim=1).numpy()
-        
-    z_np = z.numpy()
+        q_mean, _ = model.encode(x)
+    z_np = q_mean.numpy()
     means = model.prior.means.data.numpy()
     
     print("Fitting t-SNE (Topological Projection 10D -> 2D)...")
-    # Combine latent points and GMM cluster centers to project them together
+    # Combine latent points and IGMM cluster centers to project them together
     combined_pts = np.concatenate([z_np, means], axis=0)
     tsne = TSNE(n_components=2, perplexity=30, random_state=42)
     combined_tsne = tsne.fit_transform(combined_pts)
@@ -65,11 +58,15 @@ def pregenerate_frames(model_path="best_model.pt"):
     z_tsne = combined_tsne_norm[:-best_K]
     means_2d = combined_tsne_norm[-best_K:]
     
-    # Compute empirical 2D means and covariances of normalized coordinates assigned to each cluster
+    # 2D Voronoi assignment (identical to visualize_tsne.py)
+    dists_2d = np.linalg.norm(z_tsne[:, None, :] - means_2d[None, :, :], axis=2)
+    assign_2d = np.argmin(dists_2d, axis=1)
+
+    # Compute empirical 2D means and covariances for each visual cluster
     means_2d_empirical = []
     cov_2d_list = []
     for k in range(best_K):
-        pts_k = z_tsne[predicted_clusters == k]
+        pts_k = z_tsne[assign_2d == k]
         if len(pts_k) > 1:
             emp_mean = np.mean(pts_k, axis=0)
             cov_k = np.cov(pts_k.T)
@@ -134,12 +131,12 @@ def pregenerate_frames(model_path="best_model.pt"):
             img_pil = img_pil.resize((128, 128), Image.Resampling.LANCZOS)
             img_pil.save(f"scratch/manim_frames/frame_{idx}.png")
             
-    return means_2d_empirical, cov_2d_list, path_2d_points, len(path_10d)
+    return means_2d_empirical, cov_2d_list, path_2d_points, len(path_10d), z_tsne, y.numpy()
 
 
 # Run pre-generation before scene rendering
 print("Pre-generating digit reconstruction frames using t-SNE...")
-means_2d, cov_2d_list, path_2d, num_frames = pregenerate_frames()
+means_2d, cov_2d_list, path_2d, num_frames, z_data_tsne, y_labels = pregenerate_frames()
 
 class GMVAE_Demo(Scene):
     def construct(self):
@@ -147,7 +144,7 @@ class GMVAE_Demo(Scene):
         self.camera.background_color = "#121212"
         
         # Title of scene
-        title = Text("GMVAE + Differentiable IGMN", font_size=32, color=WHITE)
+        title = Text("GMVAE + Differentiable IGMM", font_size=32, color=WHITE)
         title.to_edge(UP, buff=0.4)
         subtitle = Text("Dynamic Latent Space Structuring & Digit Generation", font_size=20, color=GRAY)
         subtitle.next_to(title, DOWN, buff=0.2)
@@ -170,19 +167,39 @@ class GMVAE_Demo(Scene):
         
         self.play(Create(axes), FadeIn(latent_label))
         
-        # Draw clusters and empirical ellipses
+        # Standard matplotlib tab10 palette for 10 digits
+        digit_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        # Standard tab20 palette for 12 clusters
+        cluster_colors = ["#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
+                          "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94"]
+
+        # Draw MNIST data scatter points on the latent space axes
+        data_dots = VGroup()
+        for i in range(0, len(z_data_tsne), 3):
+            pt = z_data_tsne[i]
+            digit_label = y_labels[i]
+            screen_pos = axes.c2p(pt[0], pt[1])
+            dot_pt = Dot(point=screen_pos, radius=0.03, color=digit_colors[digit_label % 10], fill_opacity=0.35)
+            data_dots.add(dot_pt)
+            
+        # Draw clusters, empirical ellipses, and labels
         cluster_dots = VGroup()
         ellipses = VGroup()
-        
-        colors = [RED, BLUE, GREEN, YELLOW, ORANGE, PURPLE, PINK, TEAL, GOLD, MAROON]
+        cluster_labels = VGroup()
         
         for k in range(len(means_2d)):
             pt_2d = means_2d[k]
             screen_pos = axes.c2p(pt_2d[0], pt_2d[1])
+            color_k = cluster_colors[k % len(cluster_colors)]
             
             # Mean cross
-            dot = Cross(stroke_width=2, scale_factor=0.15).move_to(screen_pos)
-            dot.set_color(colors[k % len(colors)])
+            dot = Cross(stroke_width=2, scale_factor=0.12).move_to(screen_pos)
+            dot.set_color(color_k)
+            
+            # Cluster text label
+            lbl = Text(f"C{k}", font_size=11, color=WHITE).next_to(dot, UR, buff=0.05)
+            cluster_labels.add(lbl)
             
             # Compute visual ellipse from empirical covariance
             Sigma_2d = cov_2d_list[k]
@@ -191,25 +208,26 @@ class GMVAE_Demo(Scene):
             eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
             
             angle = np.arctan2(*eigenvectors[:, 0][::-1])
-            width, height = 2.0 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None)) # 1 std radius
+            # 1.5-sigma boundary
+            width, height = 3.0 * np.sqrt(np.clip(eigenvalues, a_min=1e-8, a_max=None))
             
             scale_x = axes.x_length / (axes.x_range[1] - axes.x_range[0])
             scale_y = axes.y_length / (axes.y_range[1] - axes.y_range[0])
             
             el = Ellipse(
-                width=width * scale_x * 2.0, 
-                height=height * scale_y * 2.0, 
-                color=colors[k % len(colors)],
+                width=width * scale_x, 
+                height=height * scale_y, 
+                color=color_k,
                 stroke_width=1.5,
-                stroke_opacity=0.6,
-                fill_opacity=0.08
+                stroke_opacity=0.8,
+                fill_opacity=0.12
             ).move_to(screen_pos)
             el.rotate(angle)
             
             cluster_dots.add(dot)
             ellipses.add(el)
             
-        self.play(FadeIn(ellipses, lag_ratio=0.1), FadeIn(cluster_dots, lag_ratio=0.1))
+        self.play(FadeIn(data_dots, lag_ratio=0.05), FadeIn(ellipses, lag_ratio=0.08), FadeIn(cluster_dots), FadeIn(cluster_labels))
         
         # 2. Right side: Reconstruction Panel
         recon_box = Rectangle(width=4.0, height=4.0, stroke_color=BLUE_D, stroke_width=2, fill_color="#181818", fill_opacity=0.8)

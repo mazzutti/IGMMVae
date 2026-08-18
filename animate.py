@@ -12,27 +12,20 @@ from model import GMVAE
 device = torch.device("cpu") # CPU for inference stability
 
 def main():
-    latent_dim = 10
+    checkpoint = torch.load("best_model.pt", map_location=device)
+    latent_dim = checkpoint["prior.means"].shape[1]
+    best_K = checkpoint["prior.means"].shape[0]
+    print(f"Loading checkpoint with K={best_K} clusters (latent_dim={latent_dim})")
     
     # 1. Load the trained best model
     model = GMVAE(
         input_dim=784,
         hidden_dim=512,
         latent_dim=latent_dim,
-        initial_K=2,
+        initial_K=best_K,
         covariance_type="full"
     )
     
-    checkpoint = torch.load("best_model.pt", map_location=device)
-    best_K = checkpoint["prior.means"].shape[0]
-    print(f"Loading checkpoint with K={best_K} clusters")
-    
-    if model.prior.K != best_K:
-        model.prior.means = torch.nn.Parameter(torch.zeros(best_K, latent_dim))
-        model.prior.L_params = torch.nn.Parameter(torch.zeros(best_K, latent_dim, latent_dim))
-        model.prior.pi_logits = torch.nn.Parameter(torch.zeros(best_K))
-        model.prior.K = best_K
-        
     model.load_state_dict(checkpoint)
     model.eval()
     
@@ -109,11 +102,6 @@ def main():
         loop=0
     )
     print(f"Looping interpolation GIF saved to {out_filename}")
-    
-    # Copy to artifacts
-    artifact_path = "/Users/mazzutti/.gemini/antigravity-cli/brain/6cc502c9-3dcf-4f62-88dd-78d793a2ff6e/digits_interpolation.gif"
-    shutil.copy(out_filename, artifact_path)
-    print("Copied morphing GIF to artifacts!")
 
 if __name__ == "__main__":
     main()

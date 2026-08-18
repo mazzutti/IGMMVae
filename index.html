@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GMVAE + Differentiable IGMN Prior</title>
+    <title>GMVAE + Differentiable IGMM Prior</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
@@ -93,30 +93,19 @@
             padding: 0 2rem;
         }
 
-        /* Grid layouts */
         .showcase-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 3rem;
-            margin-bottom: 4rem;
-        }
-
-        @media (min-width: 900px) {
-            .showcase-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .hero-showcase {
-                grid-column: span 2;
-            }
         }
 
         .card {
-            background: var(--card-bg);
+            background-color: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 2rem;
             backdrop-filter: blur(12px);
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
         }
@@ -208,6 +197,7 @@
         .section-header {
             text-align: center;
             margin-bottom: 3rem;
+            margin-top: 4rem;
         }
 
         .section-header h2 {
@@ -218,35 +208,24 @@
             -webkit-text-fill-color: transparent;
         }
 
-        .section-header p {
-            color: var(--text-secondary);
-            font-size: 1.1rem;
-            margin-top: 0.5rem;
-        }
-
         .tabs {
             display: flex;
             justify-content: center;
             gap: 1rem;
             margin-bottom: 2rem;
-            flex-wrap: wrap;
         }
 
         .tab-btn {
-            background: var(--card-bg);
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--card-border);
             color: var(--text-secondary);
-            padding: 0.6rem 1.5rem;
+            padding: 0.75rem 1.5rem;
             border-radius: 8px;
             cursor: pointer;
-            font-weight: 500;
             font-family: var(--font-main);
-            transition: all 0.3s ease;
-        }
-
-        .tab-btn:hover {
-            color: #FFF;
-            border-color: rgba(255, 255, 255, 0.2);
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
         }
 
         .tab-btn.active {
@@ -295,11 +274,6 @@
             margin-top: 1.5rem;
         }
 
-        .keyword { color: #F43F5E; }
-        .function { color: #3B82F6; }
-        .string { color: #10B981; }
-        .comment { color: #64748B; }
-
         footer {
             text-align: center;
             padding: 3rem 2rem;
@@ -313,8 +287,8 @@
 <body>
 
     <header>
-        <h1>GMVAE + Differentiable IGMN</h1>
-        <p class="subtitle">Autonomous Mixture Latent Space Structuring and Digit Synthesis with Online Component Growth and Pruning</p>
+        <h1>GMVAE + Differentiable IGMM</h1>
+        <p class="subtitle">Autonomous Non-Parametric Latent Structuring and Digit Generation with Online Component Growth, Merging, and Pruning</p>
         <a href="https://github.com/mazzutti/IGMNVae" target="_blank" class="github-badge">
             <svg style="width:1.2rem; height:1.2rem; margin-right:0.5rem; fill:currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
             View GitHub Repository
@@ -328,33 +302,61 @@
             <div class="card hero-showcase">
                 <div class="card-header">
                     <span class="tag">Mathematical Animation</span>
-                    <h2>Coordinate decoding mapping (Manim)</h2>
+                    <h2>Coordinate Decoding Mapping (Manim Community)</h2>
                 </div>
                 <div class="media-container">
                     <img src="./manim_demo.gif" alt="Manim Math Animation">
                 </div>
                 <div class="card-content">
-                    <p>This animation demonstrates the generative coordinate mapping of the GMVAE. On the left, the latent space is projected to 2D using PCA. The crosses represent the GMM cluster centroids discovered dynamically by the Differentiable IGMN prior, surrounded by their standard deviation covariance ellipses.</p>
-                    <p>On the right, we show the reconstructed digits generated by the VAE Decoder as a yellow coordinate dot walks smoothly between the cluster centers. You can observe the continuous structural morphing from digit to digit.</p>
+                    <p>Demonstrates the generative coordinate mapping of the GMVAE. On the left, the latent space is projected to 2D using PCA. The crosses represent the IGMM cluster centroids discovered dynamically by the Differentiable IGMM prior, surrounded by their standard deviation covariance ellipses.</p>
+                    <p>On the right, we show the reconstructed digits generated by the VAE Decoder as a yellow coordinate dot walks smoothly between the cluster centers.</p>
+                </div>
+            </div>
+
+            <!-- Centroids Preview -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="tag">Digit Generation</span>
+                    <h2>Discovered Gaussian Centroids Decoded</h2>
+                </div>
+                <div class="media-container">
+                    <img src="./centroids_preview.png" alt="Decoded Centroids Grid">
+                </div>
+                <div class="card-content">
+                    <p>Each discovered Gaussian mean vector &mu;<sub>k</sub> passed through the generator network, showing crisp, unambiguous, high-fidelity digit representations across all clusters.</p>
+                </div>
+            </div>
+
+            <!-- Latent Space Comparison -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="tag">Topological Manifold</span>
+                    <h2>PCA vs t-SNE Voronoi Partition</h2>
+                </div>
+                <div class="media-container">
+                    <img src="./latent_space_comparison.png" alt="Latent Space Comparison Plot">
+                </div>
+                <div class="card-content">
+                    <p>Side-by-side comparison between linear variance preservation (PCA) and non-linear manifold geometry (t-SNE) showing 10 cleanly separated clusters with empirical covariance ellipses.</p>
                 </div>
             </div>
 
             <!-- Training evolution -->
             <div class="card">
                 <div class="card-header">
-                    <span class="tag">Structuring Latent Space</span>
-                    <h2>Dynamic GMM Spawning & Pruning</h2>
+                    <span class="tag">Dynamic Learning</span>
+                    <h2>Training Evolution & Spawning Animation</h2>
                 </div>
                 <div class="media-container">
                     <img src="./training_evolution.gif" alt="Training Evolution Animation">
                 </div>
                 <div class="card-content">
-                    <p>Observe the VAE's 2D latent space over 25 training epochs. The Differentiable IGMN prior dynamically manages cluster sizes and counts:
+                    <p>Observe the VAE's 2D latent space evolution across training epochs. The Differentiable IGMM prior dynamically manages cluster additions, statistical updates, and pruning:
                     <div class="highlight-box">
                         <ul>
-                            <li><strong>Spawning</strong>: High-novelty data points automatically trigger the creation of new Gaussian components (ellipses).</li>
-                            <li><strong>Pruning</strong>: Components that are redundant or become unused (prior weight below 0.5%) are physically pruned at the end of each epoch to prevent overfitting.</li>
-                            <li><strong>Classification overlay</strong>: The glowing yellow thumbnails show the real-time decoded digit predicted by the GMM cluster center.</li>
+                            <li><strong>Elbow / Knee Spawning</strong>: Dynamic addition of components halted automatically when reconstruction gain saturates.</li>
+                            <li><strong>Exact Statistical Updates</strong>: Means &mu;<sub>k</sub> and support sp<sub>k</sub> updated recursively via IGMN equations.</li>
+                            <li><strong>Agglomerative Merging</strong>: Overlapping components merged automatically to prevent redundant cluster splitting.</li>
                         </ul>
                     </div>
                 </div>
@@ -363,15 +365,14 @@
             <!-- Interpolation -->
             <div class="card">
                 <div class="card-header">
-                    <span class="tag">Digit Synthesis</span>
-                    <h2>Decoder Centroid Walk</h2>
+                    <span class="tag">Continuous Synthesis</span>
+                    <h2>Latent Space Closed-Loop Digits Walk</h2>
                 </div>
                 <div class="media-container">
                     <img src="./digits_interpolation.gif" alt="Digit Morphing Animation">
                 </div>
                 <div class="card-content">
-                    <p>A continuous latent walk interpolating directly through the structural means of all active IGMN clusters. As the coordinates slide smoothly across the clusters, the VAE Decoder synthesizes morphing styles corresponding to different MNIST handwritten digits.</p>
-                    <p>By enforcing compact covariance bounds during GMM growth, the model achieves sharp, clear digit reconstructions, bringing the final validation loss to a record-low **76.67**.</p>
+                    <p>A continuous latent walk interpolating directly through the structural means of all active IGMM clusters. As the coordinates slide smoothly across the clusters, the VAE Decoder synthesizes morphing styles corresponding to different MNIST handwritten digits.</p>
                 </div>
             </div>
 
@@ -380,119 +381,58 @@
         <!-- Technical overview -->
         <section>
             <div class="section-header">
-                <h2>System Architecture</h2>
-                <p>How the Encoder, Decoder, and Differentiable IGMN Prior interact</p>
+                <h2>System Architecture & Mathematical Foundations</h2>
+                <p>How the Encoder, Decoder, and Differentiable IGMM Prior interact</p>
             </div>
 
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('prior')">Differentiable IGMN</button>
-                <button class="tab-btn" onclick="switchTab('spawning')">Spawning & Pruning</button>
-                <button class="tab-btn" onclick="switchTab('dim')">Latent Space Pruning</button>
+                <button class="tab-btn active" onclick="switchTab('prior')">Differentiable IGMM</button>
+                <button class="tab-btn" onclick="switchTab('spawning')">Autonomous Discovery</button>
+                <button class="tab-btn" onclick="switchTab('pipeline')">One-Click Pipeline</button>
             </div>
 
             <!-- Tab 1: Prior -->
             <div id="prior" class="tab-content active">
                 <div class="architect-grid">
                     <div class="card">
-                        <h3>Full Covariance prior</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Parameterized via its Cholesky factor $L_k$ to ensure symmetry and positive definiteness ($\Sigma_k = L_k L_k^T$). This allows clusters to stretch and rotate in the latent space.</p>
+                        <h3>Full Covariance Prior</h3>
+                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Parameterized via its Cholesky factor L<sub>k</sub> to ensure symmetry and positive definiteness (&Sigma;<sub>k</sub> = L<sub>k</sub> L<sub>k</sub><sup>T</sup>).</p>
                     </div>
                     <div class="card">
-                        <h3>Smooth Decision</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Novelty checks are formulated using a smooth Sigmoid function based on the minimum Mahalanobis distance. This makes cluster selection fully differentiable.</p>
+                        <h3>Exact IGMN Recursive Updates</h3>
+                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Centroid means &mu;<sub>k</sub>, support sp<sub>k</sub>, and age v<sub>k</sub> are updated via online recursive formulas, decoupled from optimizer interference.</p>
                     </div>
                     <div class="card">
-                        <h3>Prior Entropy Regularizer</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">A negative prior entropy penalty on $\pi$ prevents components from collapsing to 1 or 2 clusters, forcing the GMM to spread predictions across all digits.</p>
+                        <h3>Centroid Repulsion Regularizer</h3>
+                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Pairwise quadratic penalty on cluster centers prevents components from colliding or overlapping in latent space.</p>
                     </div>
-                </div>
-                
-                <div class="code-container">
-                    <span class="comment"># Reconstructing Cholesky factor L in the forward pass</span><br>
-                    L_tril = torch.tril(L_params, diagonal=-1)<br>
-                    diag_val = torch.diagonal(L_params, dim1=1, dim2=2)<br>
-                    clamped_diag = torch.clamp(diag_val, min=-3.0, max=0.0)<br>
-                    L = L_tril + torch.diag_embed(torch.exp(clamped_diag))<br>
-                    <br>
-                    <span class="comment"># Backprop-safe Mahalanobis Distance using triangular solve</span><br>
-                    v = torch.linalg.solve_triangular(L_k, diff_k.T, upper=False)<br>
-                    d_sq = torch.sum(v ** 2, dim=0)
                 </div>
             </div>
 
-            <!-- Tab 2: Spawning & Pruning -->
+            <!-- Tab 2: Spawning -->
             <div id="spawning" class="tab-content">
-                <div class="architect-grid" style="margin-bottom: 2rem;">
+                <div class="architect-grid">
                     <div class="card">
-                        <h3>Online Spawning</h3>
-                        <p style="color:var(--text-secondary); margin-top:0.5rem">At each step, we evaluate if the current latent coordinates $z$ are far away from all existing GMM means. If the minimum Mahalanobis distance exceeds a Chi-squared threshold, we dynamically spawn a new component centered at the novel point.</p>
-                        <div class="highlight-box" style="margin-top: 1rem;">
-                            <strong>Dynamic $\chi^2$ Threshold:</strong> Calculated based on active dimensions at 99% confidence:
-                            <code style="display:block; margin-top:0.5rem; color:var(--accent-cyan); font-family:var(--font-code)">eta = chi2.ppf(0.99, active_dims)</code>
-                        </div>
+                        <h3>Reconstruction Elbow Criterion</h3>
+                        <p style="color:var(--text-secondary); margin-top:0.5rem">Monitors the marginal reconstruction gain per cluster. Spawning is automatically frozen when the gain drops below &epsilon;<sub>knee</sub> = 3.5 nats.</p>
                     </div>
-                    <div class="card" style="grid-column: span 2">
-                        <h3>IGMN Component Pruning</h3>
-                        <p style="color:var(--text-secondary); margin-top:0.5rem">During training, components can become redundant, merge, or collapse to represent outliers. To maintain a compact prior and avoid overfitting, we perform component pruning at the end of each epoch.</p>
-                        <p style="color:var(--text-secondary); margin-top:0.5rem">If a cluster's mixing coefficient (prior weight) $\pi_k$ drops below a specified threshold (default: $0.5\%$), the cluster is physically removed from the PyTorch parameters. This optimizes classification speed by 1.33x and reduces checkpoint sizes.</p>
-                        <div class="highlight-box" style="margin-top: 1rem;">
-                            <strong>Pruning Criterion:</strong>
-                            <code style="display:block; margin-top:0.5rem; color:var(--accent-cyan); font-family:var(--font-code)">pi_k < 0.005  ==>  Pruned from Model</code>
-                        </div>
+                    <div class="card">
+                        <h3>Gradient-Adaptive Cooldown</h3>
+                        <p style="color:var(--text-secondary); margin-top:0.5rem">Enforces a cooldown window of at least 10% of an epoch between spawns to allow Adam to adapt the manifold before creating new components.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Agglomerative Merging</h3>
+                        <p style="color:var(--text-secondary); margin-top:0.5rem">Pairs of Gaussians with centroid distance &lt; 3.0 are merged into a single component with weighted mean based on accumulated support.</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Tab 3: Latent Space Pruning -->
-            <div id="dim" class="tab-content">
-                <div class="architect-grid" style="margin-bottom: 2rem;">
-                    <div class="card">
-                        <h3>ARD</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Automatic Relevance Determination applies L1-penalized sigmoidal weights to each latent dimension. Unused directions are shrunk to zero.</p>
-                    </div>
-                    <div class="card">
-                        <h3>KL-Pruning</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Monitors the batch variance. Dimensions that collapse to the prior distribution $\mathcal{N}(0, 1)$ are automatically masked out.</p>
-                    </div>
-                    <div class="card">
-                        <h3>PCA</h3>
-                        <p style="margin-top:0.5rem; color:var(--text-secondary)">Performs singular value decomposition on the latent covariance matrix, dropping directions with eigenvalues below a threshold.</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <h3>Subspace Slicing at Inference Time</h3>
-                    <p style="color:var(--text-secondary); margin-top:0.5rem">By identifying the subset of active latent dimensions, our optimized classification method (<code>model.classify_optimized()</code>) slices the GMM prior means and Cholesky factors. It computes probability densities and Mahalanobis distances only on the active $D_{\text{active}}$ subspace, avoiding uninformative collapsed dimensions and saving FLOPs.</p>
-                    <div class="highlight-box" style="margin-top: 1rem;">
-                        <strong>Local Benchmark Results (Batch of 1000 items):</strong>
-                        <table style="width: 100%; margin-top: 0.5rem; border-collapse: collapse; text-align: left; font-size: 0.85rem; color: var(--text-primary);">
-                            <thead>
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1)">
-                                    <th style="padding: 0.4rem 0.2rem">Metric</th>
-                                    <th style="padding: 0.4rem 0.2rem">Standard Eval</th>
-                                    <th style="padding: 0.4rem 0.2rem">Optimized (Pruned)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05)">
-                                    <td style="padding: 0.4rem 0.2rem; color: var(--text-secondary)">Avg. Compute Time</td>
-                                    <td style="padding: 0.4rem 0.2rem">5.34 ms</td>
-                                    <td style="padding: 0.4rem 0.2rem; color: var(--accent-cyan)">4.02 ms (<strong>1.33x speedup</strong>)</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 0.4rem 0.2rem; color: var(--text-secondary)">Prediction Match</td>
-                                    <td style="padding: 0.4rem 0.2rem">100.00%</td>
-                                    <td style="padding: 0.4rem 0.2rem; color: var(--accent-cyan)">100.00% (Identical output)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card" style="margin-top: 2rem;">
-                    <h3>PCA vs t-SNE Topological Visualization</h3>
-                    <p style="color:var(--text-secondary); margin-top:0.5rem">Linear projections like PCA can only show flat slices of the space. In contrast, non-linear topological mapping (using <strong>t-SNE</strong>) preserves local manifolds, separating digits into distinct clusters.</p>
-                    <div class="media-container" style="margin-top: 1.5rem;">
-                        <img src="./latent_space_comparison.png" alt="PCA vs t-SNE Latent Space Comparison">
-                    </div>
+            <!-- Tab 3: Pipeline -->
+            <div id="pipeline" class="tab-content">
+                <div class="code-container">
+                    <span style="color:#06B6D4"># Execute full end-to-end training and export all GIFs, video, and plots</span><br>
+                    python3 run_pipeline.py<br><br>
+                    <span style="color:#8B5CF6"># Or run directly in VS Code with F5 (Launch Config: Full Pipeline)</span>
                 </div>
             </div>
 
@@ -500,19 +440,16 @@
     </main>
 
     <footer>
-        <p>&copy; 2026 GMVAE + Differentiable IGMN Project. Built with PyTorch and Manim.</p>
+        <p>GMVAE + Differentiable IGMM Prior &bull; Autonomous Latent Structuring</p>
     </footer>
 
     <script>
         function switchTab(tabId) {
-            const contents = document.querySelectorAll('.tab-content');
-            contents.forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            const buttons = document.querySelectorAll('.tab-btn');
-            buttons.forEach(button => button.classList.remove('active'));
-            
+            event.target.classList.add('active');
             document.getElementById(tabId).classList.add('active');
-            event.currentTarget.classList.add('active');
         }
     </script>
 </body>
