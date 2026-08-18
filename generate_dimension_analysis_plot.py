@@ -335,7 +335,9 @@ for row_idx, d_val in enumerate(dims_to_show):
     for col_idx in range(max_cols):
         ax_img = fig.add_subplot(inner_gs[row_idx, col_idx])
         if col_idx < len(imgs):
-            ax_img.imshow(imgs[col_idx], cmap='magma', vmin=0, vmax=1)
+            img = imgs[col_idx]
+            norm_img = (img - img.min()) / (img.max() - img.min() + 1e-6)
+            ax_img.imshow(norm_img, cmap='magma', vmin=0, vmax=1)
             ax_img.axis('off')
         else:
             ax_img.imshow(np.zeros((28, 28)), cmap='magma', vmin=0, vmax=1, alpha=0.0)
