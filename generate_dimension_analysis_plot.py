@@ -232,11 +232,10 @@ for D in dims_to_test:
     final_bce = float(F.binary_cross_entropy(torch.tensor(Rec_all), torch.tensor(X_all), reduction='sum').item() / len(X_all))
     sil = float(silhouette_score(Z_all[:2000], Y_all[:2000]))
     
-    # Extract decoded centroids
+    # Extract all decoded centroids without truncation
     centroids_imgs = []
     with torch.no_grad():
-        K_show = min(10, model.prior.K)
-        for k in range(K_show):
+        for k in range(model.prior.K):
             mu_k = model.prior.means[k:k+1].to(device)
             recon_k = model.decode(mu_k).view(28, 28).cpu().numpy()
             centroids_imgs.append(recon_k)
@@ -253,7 +252,7 @@ for D in dims_to_test:
 
 print("\n--- Step 3/3: Generating Rate-Distortion Master Plot (D=3 to D=28) ---")
 
-fig = plt.figure(figsize=(19, 15), facecolor='#0D1117')
+fig = plt.figure(figsize=(24, 16), facecolor='#0D1117')
 gs = GridSpec(3, 3, figure=fig, height_ratios=[1.2, 1.2, 1.4], hspace=0.36, wspace=0.25)
 
 dims = [r["dim"] for r in results]
@@ -267,7 +266,7 @@ ax1.set_facecolor('#161B22')
 ax1.plot(dims, ks, color='#06B6D4', marker='o', linewidth=3.5, markersize=9, label='Adaptive Codebook Clusters (K*)')
 ax1.axvspan(2, 6.5, color='#EF4444', alpha=0.12, label='Low D: Codebook Tiling (VQ-VAE Regime, High K)')
 ax1.axvspan(6.5, 17, color='#F59E0B', alpha=0.12, label='Mid D: Hybrid Class + Style (Medium K)')
-ax1.axvspan(17, 30, color='#10B981', alpha=0.12, label='High D: Continuous Manifold (Canonical K ≈ 10)')
+ax1.axvspan(17, 30, color='#10B981', alpha=0.12, label='High D: Continuous Manifold (Stabilized K* ≈ 14)')
 for d, k in zip(dims, ks):
     ax1.annotate(f"K={k}", (d, k), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontweight='bold', fontsize=10.5)
 ax1.set_title("1. Rate-Distortion Compensation: Discovered Clusters (K*) vs Latent Dimension (D)", color='white', fontsize=13, fontweight='bold', pad=12)
@@ -317,32 +316,35 @@ RATE-DISTORTION & INFORMATION CAPACITY TRADE-OFF: Total Capacity = D x Bits + lo
    • Continuous coordinates handle stroke variations, while discrete modes
      isolate the 10 canonical digits plus dominant caligraphic sub-styles (K* ≈ 15-18).
 
-3. High D (D ≥ 20) — Continuous Manifold Unfolding (Canonical K ≈ 10):
-   • Ample continuous dimensions smoothly encode rotation, slant, and thickness.
-   • The prior naturally converges to exactly K ≈ 10 canonical class attractors,
-     as extra discrete clusters are redundant when the continuous manifold is unconstrained.
+3. High D (D ≥ 20) — Manifold Unfolding & Canonical Modes (K* ≈ 14):
+   • Ample continuous axes smoothly absorb continuous stroke deformations (thickness, tilt, scale).
+   • Spawning halts and consolidates at K* = 14: the 10 canonical digits plus the 4 fundamental
+     topological stroke bifurcations (crossbar-7 vs straight-7, looped-2 vs flat-2, open-4 vs closed-4,
+     slanted-1 vs vertical-1) that cannot be collapsed without Gaussian covariance inflation.
 """
 ax4.text(0.04, 0.5, explanation_text, color='#E5E7EB', fontsize=10.2, fontfamily='monospace', va='center',
          bbox=dict(boxstyle='round,pad=1.0', facecolor='#0D1117', edgecolor='#30363D', alpha=0.9))
 
-# SECTION 3 (Bottom): Visual Centroid Preview Across 5 Tested Dimensions (3D, 5D, 10D, 16D, 28D)
+# SECTION 3 (Bottom): Visual Centroid Preview Across 5 Tested Dimensions (3D, 5D, 10D, 16D, 28D) - SHOWING ALL CLUSTERS
 dims_to_show = [3, 5, 10, 16, 28]
-inner_gs = gs[2, :].subgridspec(len(dims_to_show), 10, hspace=0.15, wspace=0.15)
+max_cols = max([len(decoded_centroids_by_dim.get(d, [])) for d in dims_to_show])
+inner_gs = gs[2, :].subgridspec(len(dims_to_show), max_cols, hspace=0.25, wspace=0.08)
 
 for row_idx, d_val in enumerate(dims_to_show):
     imgs = decoded_centroids_by_dim.get(d_val, [])
-    for col_idx in range(10):
+    for col_idx in range(max_cols):
         ax_img = fig.add_subplot(inner_gs[row_idx, col_idx])
         if col_idx < len(imgs):
             ax_img.imshow(imgs[col_idx], cmap='magma', vmin=0, vmax=1)
+            ax_img.axis('off')
         else:
-            ax_img.imshow(np.zeros((28, 28)), cmap='magma', vmin=0, vmax=1)
-        ax_img.axis('off')
+            ax_img.imshow(np.zeros((28, 28)), cmap='magma', vmin=0, vmax=1, alpha=0.0)
+            ax_img.axis('off')
         if col_idx == 0:
-            dim_text = "D = " + str(d_val) + "\n(K*=" + str(len(imgs)) + ")"
-            ax_img.text(-12, 14, dim_text, color="#06B6D4", fontsize=10, fontweight="bold", ha="right", va="center")
-        if row_idx == 0:
-            ax_img.set_title(f"Cluster {col_idx+1}", color='#9CA3AF', fontsize=9)
+            dim_text = "D = " + str(d_val) + "\n(" + str(len(imgs)) + " clusters)"
+            ax_img.text(-4, 14, dim_text, color="#06B6D4", fontsize=9.5, fontweight="bold", ha="right", va="center")
+        if row_idx == 0 and (col_idx + 1) % 2 != 0:
+            ax_img.set_title(f"C{col_idx+1}", color='#9CA3AF', fontsize=7.5)
 
 plt.suptitle("Rate-Distortion Balance: Continuous Capacity (D) vs Discrete Prior Codebook (K*)", color='white', fontsize=15, fontweight='bold', y=0.985)
 output_path = "latent_dimension_vs_clusters_analysis.png"
