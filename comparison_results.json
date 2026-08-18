@@ -1,0 +1,23 @@
+{
+  "latent_dim": 10,
+  "fcvae": {
+    "name": "Baseline FCVAE (Fixed Latent D=10, Isotropic Prior)",
+    "latent_dim": 10,
+    "bce_loss": 80.2532375,
+    "mse_loss": 0.013393626548349857,
+    "silhouette_score": 0.1246529147028923,
+    "ari_score": 0.62139392949529,
+    "nmi_score": 0.6966641584474641,
+    "latency_ms": 199.55913543701172
+  },
+  "igmm_vae": {
+    "name": "IGMMVae (Matching Latent D=10, Mixture Prior)",
+    "latent_dim": 10,
+    "bce_loss": 78.887575,
+    "mse_loss": 0.012852626852691174,
+    "silhouette_score": 0.18396741151809692,
+    "ari_score": 0.6977312794270051,
+    "nmi_score": 0.7656408914972133,
+    "latency_ms": 4.81719970703125
+  }
+}

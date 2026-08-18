@@ -15,8 +15,19 @@
             "request": "launch",
             "program": "${workspaceFolder}/run_pipeline.py",
             "args": [
-                "--force_k", "10"
+                "--force_k",
+                "10",
+                "--latent_dim",
+                "10"
             ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🔬 Run Comparative Experiment: FCVAE (D=10) vs GMVAE + IGMM",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/experiment_comparison.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
         }

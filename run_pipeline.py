@@ -152,7 +152,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, lr, action
     plt.close(fig)
     return img
 
-def step1_train_best_model(force_k=None, epochs=14):
+def step1_train_best_model(force_k=None, epochs=14, latent_dim=16):
     mode_str = f"Forced Canonical K={force_k}" if force_k is not None else "Autonomous K Discovery"
     print_header(f"Step 1/5: Training GMVAE + Differentiable IGMM ({mode_str})")
     device = torch.device("cpu")
@@ -167,7 +167,6 @@ def step1_train_best_model(force_k=None, epochs=14):
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
     
-    latent_dim = 16
     initial_K = force_k if force_k is not None else 2
     spawn_cooldown = max(35, len(train_loader) // 10)
     epsilon_knee = 3.5
@@ -426,13 +425,14 @@ def main():
     parser = argparse.ArgumentParser(description="Run Full GMVAE + IGMM Pipeline")
     parser.add_argument("--force_k", type=int, default=None, help="Force a fixed number of clusters (e.g. 10)")
     parser.add_argument("--epochs", type=int, default=14, help="Number of training epochs")
+    parser.add_argument("--latent_dim", type=int, default=16, help="Latent bottleneck dimension (e.g. 10 or 16)")
     args = parser.parse_args()
 
     start_time = time.time()
     mode_title = f"FORCED K={args.force_k} CANONICAL" if args.force_k is not None else "AUTONOMOUS K DISCOVERY"
-    print(f"\n🚀 STARTING FULL GMVAE + IGMM PIPELINE ({mode_title})")
+    print(f"\n🚀 STARTING FULL GMVAE + IGMM PIPELINE ({mode_title} | Latent D={args.latent_dim})")
     
-    step1_train_best_model(force_k=args.force_k, epochs=args.epochs)
+    step1_train_best_model(force_k=args.force_k, epochs=args.epochs, latent_dim=args.latent_dim)
     step2_visualize_latent_space()
     step3_generate_gifs()
     step4_generate_manim_video()
