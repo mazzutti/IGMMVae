@@ -323,7 +323,7 @@ def main():
         
         # Merge overlapping components during active exploration
         if args.force_k is None and epoch <= 6:
-            while model.prior.merge_components(merge_dist_threshold=args.merge_dist):
+            while model.prior.merge_components():
                 ae_params = list(model.encoder_module.parameters()) + list(model.decoder_module.parameters()) + [model.prior.L_params]
                 current_lr = optimizer.param_groups[0]['lr']
                 optimizer = optim.Adam(ae_params, lr=current_lr)

@@ -347,7 +347,7 @@ def step1_train_best_model(force_k=None, epochs=14, latent_dim=16):
         # Merge duplicates only during active growth phase
         if force_k is None and epoch <= 6:
             merged_any = False
-            while model.prior.merge_components(merge_dist_threshold=merge_dist_threshold):
+            while model.prior.merge_components():
                 merged_any = True
                 ae_params = list(model.encoder_module.parameters()) + list(model.decoder_module.parameters()) + [model.prior.L_params]
                 current_lr = optimizer.param_groups[0]['lr']

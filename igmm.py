@@ -1,3 +1,4 @@
+import scipy.stats as stats
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -240,22 +241,77 @@ class DifferentiableIGMM(nn.Module):
             
         return False
 
-    def merge_components(self, merge_dist_threshold=3.0):
+    def get_chi2_threshold(self, p_val=0.03):
         """
-        Agglomerative statistical merging: merges overlapping Gaussian components
-        whose latent centroids are closer than merge_dist_threshold.
+        Analytical Chi-Squared core-overlap critical value for latent dimension D.
+        p_val represents the lower-tail percentile: two components overlap if their
+        Mahalanobis distance d_M^2 is smaller than the inner core critical value.
+        """
+        try:
+            return float(stats.chi2.ppf(p_val, df=self.latent_dim))
+        except Exception:
+            # Wilson-Hilferty approximation for lower-tail quantiles
+            z = -1.28155 if p_val <= 0.10 else -1.64485
+            k = self.latent_dim
+            return max(0.5, float(k * (1.0 - 2.0 / (9.0 * k) + z * math.sqrt(2.0 / (9.0 * k))) ** 3))
+
+    def merge_components(self, alpha=0.03, eta_merge=None, merge_dist_threshold=None):
+        """
+        Analytical Mahalanobis Chi-Squared Overlap Merging:
+        Calculates the joint-covariance Mahalanobis distance between all pairs of Gaussians:
+        d_M^2(mu_i, mu_j) = (mu_i - mu_j)^T ((Sigma_i + Sigma_j)/2)^(-1) (mu_i - mu_j).
+        Merges components if d_M^2 < chi2_D(1 - alpha).
         """
         if self.K <= 2:
             return False
             
+        device = self.means.device
         means = self.means.data
         K = self.K
-        diffs = means.unsqueeze(0) - means.unsqueeze(1)
-        dists = torch.norm(diffs, dim=2)
-        dists = dists + torch.eye(K, device=means.device) * 1e5
+        D = self.latent_dim
+        
+        if eta_merge is None:
+            eta_merge = self.get_chi2_threshold(p_val=alpha)
+            
+        # 1. Compute full or diagonal covariances
+        if self.covariance_type == "diagonal":
+            variances = torch.exp(self.logvars.data)  # (K, D)
+            dists = torch.full((K, K), 1e9, device=device)
+            for i in range(K):
+                for j in range(i + 1, K):
+                    joint_var = 0.5 * (variances[i] + variances[j]) + 1e-4
+                    diff = means[i] - means[j]
+                    d_sq = torch.sum((diff ** 2) / joint_var).item()
+                    dists[i, j] = d_sq
+                    dists[j, i] = d_sq
+        else:
+            # Full Covariance via Cholesky factor L_params
+            L_tril = torch.tril(self.L_params.data, diagonal=-1)
+            diag_val = torch.diagonal(self.L_params.data, dim1=1, dim2=2)
+            clamped_diag = torch.clamp(diag_val, min=-3.0, max=-0.2)
+            L = L_tril + torch.diag_embed(torch.exp(clamped_diag))
+            Sigmas = torch.matmul(L, L.transpose(1, 2)) + 1e-4 * torch.eye(D, device=device).unsqueeze(0)
+            
+            dists = torch.full((K, K), 1e9, device=device)
+            for i in range(K):
+                for j in range(i + 1, K):
+                    joint_sigma = 0.5 * (Sigmas[i] + Sigmas[j]) + 1e-4 * torch.eye(D, device=device)
+                    diff = (means[i] - means[j]).unsqueeze(1)
+                    try:
+                        L_joint = torch.linalg.cholesky(joint_sigma)
+                        v = torch.linalg.solve_triangular(L_joint, diff, upper=False)
+                        d_sq = torch.sum(v ** 2).item()
+                    except Exception:
+                        d_sq = torch.norm(means[i] - means[j]).item() ** 2
+                    dists[i, j] = d_sq
+                    dists[j, i] = d_sq
+                    
         min_val, min_idx = torch.min(dists.view(-1), dim=0)
         
-        if min_val.item() < merge_dist_threshold:
+        # Check threshold (Euclidean fallback if merge_dist_threshold is explicitly given, otherwise Mahalanobis chi2)
+        should_merge = (min_val.item() < merge_dist_threshold) if merge_dist_threshold is not None else (min_val.item() < eta_merge)
+        
+        if should_merge:
             i = (min_idx.item() // K)
             j = (min_idx.item() % K)
             
@@ -263,12 +319,37 @@ class DifferentiableIGMM(nn.Module):
             sp_j = self.sp[j]
             total_sp = sp_i + sp_j + 1e-5
             
-            self.means.data[i] = (sp_i * self.means.data[i] + sp_j * self.means.data[j]) / total_sp
+            # 1. Update Mean (Support-weighted combination)
+            mu_i_old = self.means.data[i].clone()
+            mu_j_old = self.means.data[j].clone()
+            merged_mu = (sp_i * mu_i_old + sp_j * mu_j_old) / total_sp
+            self.means.data[i] = merged_mu
             self.sp[i] = total_sp
             self.v[i] = max(self.v[i], self.v[j])
             
+            # 2. Update Covariance (Within-cluster + Between-cluster scatter)
+            if self.covariance_type == "diagonal":
+                var_i = variances[i]
+                var_j = variances[j]
+                diff_sq = (mu_i_old - mu_j_old) ** 2
+                merged_var = (sp_i * var_i + sp_j * var_j) / total_sp + (sp_i * sp_j / (total_sp ** 2)) * diff_sq
+                self.logvars.data[i] = torch.log(torch.clamp(merged_var, min=1e-4, max=10.0))
+            else:
+                sigma_i = Sigmas[i]
+                sigma_j = Sigmas[j]
+                diff_mu = (mu_i_old - mu_j_old).unsqueeze(1)
+                scatter = torch.matmul(diff_mu, diff_mu.T)
+                merged_sigma = (sp_i * sigma_i + sp_j * sigma_j) / total_sp + (sp_i * sp_j / (total_sp ** 2)) * scatter
+                merged_sigma = merged_sigma + 1e-4 * torch.eye(D, device=device)
+                try:
+                    merged_L = torch.linalg.cholesky(merged_sigma)
+                    self.L_params.data[i] = merged_L
+                except Exception:
+                    pass
+            
+            # 3. Remove component j
             keep_indices = [idx for idx in range(K) if idx != j]
-            keep = torch.tensor(keep_indices, device=means.device, dtype=torch.long)
+            keep = torch.tensor(keep_indices, device=device, dtype=torch.long)
             
             self.means = nn.Parameter(self.means.data[keep])
             if self.covariance_type == "diagonal":
@@ -283,7 +364,7 @@ class DifferentiableIGMM(nn.Module):
             self.v = self.v[keep]
             self.sp = self.sp[keep]
             self.K = len(keep_indices)
-            print(f"\n[Merge] Merged overlapping components ({i}, {j}) -> Remaining K = {self.K} (dist={min_val.item():.2f})")
+            print(f"\n[Mahalanobis χ² Merge] Overlapping components ({i}, {j}) → Remaining K = {self.K} (d_M² = {min_val.item():.2f} < η = {eta_merge:.2f})")
             return True
         return False
 
