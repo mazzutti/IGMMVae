@@ -114,7 +114,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, lr, action
             
     val_loss_str = f"Loss: {val_loss:.2f}" if val_loss is not None else "Loss: N/A"
     status_str = f" | {action_text}" if action_text else ""
-    plt.title(f"GMVAE + IGMM Evolution | Step {step:4d} | Epoch {epoch} | K={K} Clusters\n{val_loss_str}{status_str} (t-SNE 16D -> 2D)", color='white', fontsize=11)
+    plt.title(f"GMVAE + IGMM Evolution | Step {step:4d} | Epoch {epoch} | K={K} Clusters\n{val_loss_str}{status_str} (t-SNE {model.latent_dim}D -> 2D)", color='white', fontsize=11)
     
     xlim_min, xlim_max = np.percentile(z_pts_2d[:, 0], [1, 99])
     ylim_min, ylim_max = np.percentile(z_pts_2d[:, 1], [1, 99])

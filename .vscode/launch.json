@@ -7,7 +7,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/run_pipeline.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--latent_dim",
+                "5"
+            ]
         },
         {
             "name": "🎯 Full Pipeline (Forced K=10 Canonical -> Visuals & Video)",

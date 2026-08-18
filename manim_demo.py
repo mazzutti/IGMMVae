@@ -44,7 +44,7 @@ def pregenerate_frames(model_path="best_model.pt"):
     z_np = q_mean.numpy()
     means = model.prior.means.data.numpy()
     
-    print("Fitting t-SNE (Topological Projection 10D -> 2D)...")
+    print(f"Fitting t-SNE (Topological Projection {model.latent_dim}D -> 2D)...")
     # Combine latent points and IGMM cluster centers to project them together
     combined_pts = np.concatenate([z_np, means], axis=0)
     tsne = TSNE(n_components=2, perplexity=30, random_state=42)
