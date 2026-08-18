@@ -241,26 +241,29 @@ class DifferentiableIGMM(nn.Module):
             
         return False
 
-    def get_chi2_threshold(self, p_val=0.03):
+    def get_chi2_threshold(self, p_val=0.03, df=None):
         """
-        Analytical Chi-Squared core-overlap critical value for latent dimension D.
+        Analytical Chi-Squared core-overlap critical value for active degrees of freedom.
         p_val represents the lower-tail percentile: two components overlap if their
         Mahalanobis distance d_M^2 is smaller than the inner core critical value.
         """
+        target_df = df if df is not None else self.latent_dim
+        target_df = max(1, int(round(target_df)))
         try:
-            return float(stats.chi2.ppf(p_val, df=self.latent_dim))
+            return float(stats.chi2.ppf(p_val, df=target_df))
         except Exception:
             # Wilson-Hilferty approximation for lower-tail quantiles
             z = -1.28155 if p_val <= 0.10 else -1.64485
-            k = self.latent_dim
+            k = target_df
             return max(0.5, float(k * (1.0 - 2.0 / (9.0 * k) + z * math.sqrt(2.0 / (9.0 * k))) ** 3))
 
     def merge_components(self, alpha=0.03, eta_merge=None, merge_dist_threshold=None):
         """
-        Analytical Mahalanobis Chi-Squared Overlap Merging:
+        Analytical Mahalanobis Chi-Squared Overlap Merging with Spectral Effective Degrees of Freedom:
         Calculates the joint-covariance Mahalanobis distance between all pairs of Gaussians:
         d_M^2(mu_i, mu_j) = (mu_i - mu_j)^T ((Sigma_i + Sigma_j)/2)^(-1) (mu_i - mu_j).
-        Merges components if d_M^2 < chi2_D(1 - alpha).
+        Evaluates against the effective rank of the joint covariance df_eff = Tr(Sigma)^2 / Tr(Sigma^2).
+        Merges components if d_M^2 < chi2_{df_eff}(alpha).
         """
         if self.K <= 2:
             return False
@@ -270,20 +273,26 @@ class DifferentiableIGMM(nn.Module):
         K = self.K
         D = self.latent_dim
         
-        if eta_merge is None:
-            eta_merge = self.get_chi2_threshold(p_val=alpha)
-            
         # 1. Compute full or diagonal covariances
         if self.covariance_type == "diagonal":
             variances = torch.exp(self.logvars.data)  # (K, D)
             dists = torch.full((K, K), 1e9, device=device)
+            eta_matrix = torch.zeros((K, K), device=device)
             for i in range(K):
                 for j in range(i + 1, K):
                     joint_var = 0.5 * (variances[i] + variances[j]) + 1e-4
                     diff = means[i] - means[j]
                     d_sq = torch.sum((diff ** 2) / joint_var).item()
+                    
+                    tr1 = torch.sum(joint_var)
+                    tr2 = torch.sum(joint_var ** 2)
+                    df_eff = max(2.0, min(float(D), float(((tr1 ** 2) / tr2).item())))
+                    eta_ij = self.get_chi2_threshold(p_val=alpha, df=df_eff) if eta_merge is None else eta_merge
+                    
                     dists[i, j] = d_sq
                     dists[j, i] = d_sq
+                    eta_matrix[i, j] = eta_ij
+                    eta_matrix[j, i] = eta_ij
         else:
             # Full Covariance via Cholesky factor L_params
             L_tril = torch.tril(self.L_params.data, diagonal=-1)
@@ -293,6 +302,7 @@ class DifferentiableIGMM(nn.Module):
             Sigmas = torch.matmul(L, L.transpose(1, 2)) + 1e-4 * torch.eye(D, device=device).unsqueeze(0)
             
             dists = torch.full((K, K), 1e9, device=device)
+            eta_matrix = torch.zeros((K, K), device=device)
             for i in range(K):
                 for j in range(i + 1, K):
                     joint_sigma = 0.5 * (Sigmas[i] + Sigmas[j]) + 1e-4 * torch.eye(D, device=device)
@@ -303,15 +313,27 @@ class DifferentiableIGMM(nn.Module):
                         d_sq = torch.sum(v ** 2).item()
                     except Exception:
                         d_sq = torch.norm(means[i] - means[j]).item() ** 2
+                        
+                    # Spectral Participation Ratio for Effective Degrees of Freedom
+                    tr1 = torch.trace(joint_sigma)
+                    tr2 = torch.sum(joint_sigma ** 2)
+                    df_eff = max(2.0, min(float(D), float(((tr1 ** 2) / tr2).item())))
+                    eta_ij = self.get_chi2_threshold(p_val=alpha, df=df_eff) if eta_merge is None else eta_merge
+                    
                     dists[i, j] = d_sq
                     dists[j, i] = d_sq
+                    eta_matrix[i, j] = eta_ij
+                    eta_matrix[j, i] = eta_ij
                     
-        min_val, min_idx = torch.min(dists.view(-1), dim=0)
+        # Ratio of Mahalanobis distance to effective threshold
+        if merge_dist_threshold is not None:
+            ratios = dists / merge_dist_threshold
+        else:
+            ratios = dists / (eta_matrix + 1e-6)
+            
+        min_ratio, min_idx = torch.min(ratios.view(-1), dim=0)
         
-        # Check threshold (Euclidean fallback if merge_dist_threshold is explicitly given, otherwise Mahalanobis chi2)
-        should_merge = (min_val.item() < merge_dist_threshold) if merge_dist_threshold is not None else (min_val.item() < eta_merge)
-        
-        if should_merge:
+        if min_ratio.item() < 1.0:
             i = (min_idx.item() // K)
             j = (min_idx.item() % K)
             
@@ -364,7 +386,9 @@ class DifferentiableIGMM(nn.Module):
             self.v = self.v[keep]
             self.sp = self.sp[keep]
             self.K = len(keep_indices)
-            print(f"\n[Mahalanobis χ² Merge] Overlapping components ({i}, {j}) → Remaining K = {self.K} (d_M² = {min_val.item():.2f} < η = {eta_merge:.2f})")
+            actual_d2 = dists[i, j].item()
+            actual_eta = eta_matrix[i, j].item()
+            print(f"\n[Mahalanobis χ² Merge (Eff df)] Overlapping components ({i}, {j}) → Remaining K = {self.K} (d_M² = {actual_d2:.2f} < η_eff = {actual_eta:.2f})")
             return True
         return False
 
