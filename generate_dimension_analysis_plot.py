@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import copy
 import json
 import torch
 import torch.nn as nn
@@ -11,7 +12,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from sklearn.metrics import silhouette_score, adjusted_rand_score
+from sklearn.metrics import silhouette_score
 from model import GMVAE
 
 device = torch.device("cpu")
@@ -27,22 +28,69 @@ train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
 
 dims_to_test = [3, 5, 8, 10, 14, 16, 20, 24, 28]
-epochs_per_dim = 14
+max_epochs = 25
+patience = 3
+min_delta = 0.10
+
+class EarlyStopping:
+    def __init__(self, patience=3, min_delta=0.10):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float('inf')
+        self.best_epoch = 0
+        self.counter = 0
+        self.best_state = None
+        self.early_stop = False
+
+    def step(self, val_loss, epoch, model):
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.best_epoch = epoch
+            self.best_state = {
+                'encoder': copy.deepcopy(model.encoder_module.state_dict()),
+                'decoder': copy.deepcopy(model.decoder_module.state_dict()),
+                'means': model.prior.means.data.clone(),
+                'sp': model.prior.sp.clone(),
+                'v': model.prior.v.clone(),
+                'K': model.prior.K,
+                'pi_logits': model.prior.pi_logits.data.clone(),
+                'L_params': model.prior.L_params.data.clone() if model.prior.covariance_type == "full" else None,
+                'logvars': model.prior.logvars.data.clone() if model.prior.covariance_type == "diagonal" else None
+            }
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+    def restore_best(self, model):
+        if self.best_state is not None:
+            model.encoder_module.load_state_dict(self.best_state['encoder'])
+            model.decoder_module.load_state_dict(self.best_state['decoder'])
+            model.prior.K = self.best_state['K']
+            model.prior.means = nn.Parameter(self.best_state['means'])
+            model.prior.sp = self.best_state['sp']
+            model.prior.v = self.best_state['v']
+            model.prior.pi_logits = nn.Parameter(self.best_state['pi_logits'])
+            if self.best_state['L_params'] is not None:
+                model.prior.L_params = nn.Parameter(self.best_state['L_params'])
+            if self.best_state['logvars'] is not None:
+                model.prior.logvars = nn.Parameter(self.best_state['logvars'])
+            return self.best_epoch, self.best_loss
+        return 0, 0.0
+
 results = []
 decoded_centroids_by_dim = {}
 
-print(f"--- Step 2/3: Training 14 Epochs Rate-Distortion Balance across D in {dims_to_test} ---")
+print(f"--- Step 2/3: Training with Validation Early Stopping (Max {max_epochs} Epochs, Patience={patience}) ---")
 
 for D in dims_to_test:
-    print(f"\n{'='*65}")
-    print(f"  TRAINING LATENT DIMENSION D = {D:2d} ({epochs_per_dim} EPOCHS)")
-    print(f"{'='*65}")
+    print(f"\n{'='*70}")
+    print(f"  TRAINING LATENT DIMENSION D = {D:2d} (Max {max_epochs} Epochs, Early Stopping Patience={patience})")
+    print(f"{'='*70}")
     
     torch.manual_seed(42)
     
-    # Rate-Distortion Spawning Calibration:
-    # Low D -> Smaller spatial radius allows dense discrete codebook tiling (K -> 25-30)
-    # High D -> Larger spatial radius + early saturation halts at canonical K -> 10
     if D <= 4:
         spawn_thresh = 1.10
         spawn_cooldown = 18
@@ -82,8 +130,11 @@ for D in dims_to_test:
     allow_spawning = True
     prev_val_loss = None
     prev_K = 2
+    early_stopper = EarlyStopping(patience=patience, min_delta=min_delta)
     
-    for epoch in range(1, epochs_per_dim + 1):
+    epochs_trained = 0
+    for epoch in range(1, max_epochs + 1):
+        epochs_trained = epoch
         model.train()
         total_loss = 0.0
         for x, _ in train_loader:
@@ -186,7 +237,6 @@ for D in dims_to_test:
         current_K = model.prior.K
         
         # Rate-Distortion Elbow Check:
-        # In high D (D >= 16), once BCE <= 68.0 nats and K >= 10, continuous channel handles variance
         if allow_spawning:
             if D >= 16 and val_bce <= 68.0 and current_K >= 10:
                 print(f"  [Rate-Distortion Limit Reached] BCE={val_bce:.2f} <= 68.0 nats. Continuous channel optimal. Freezing K={current_K}.")
@@ -209,10 +259,19 @@ for D in dims_to_test:
                 optimizer = optim.Adam(ae_params, lr=current_lr)
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
                 
-        if epoch % 2 == 0 or epoch == epochs_per_dim:
-            print(f"  Epoch {epoch:2d}/{epochs_per_dim} | Discovered K = {model.prior.K:2d} | Val BCE = {val_bce:.2f}")
+        print(f"  Epoch {epoch:2d}/{max_epochs} | Discovered K = {model.prior.K:2d} | Val BCE = {val_bce:.2f}")
+        
+        # Validation Early Stopping Check
+        early_stopper.step(val_bce, epoch, model)
+        if early_stopper.early_stop:
+            print(f"  [Early Stopping Triggered] No improvement for {patience} epochs. Stopping at epoch {epoch}.")
+            break
             
-    # Full Test Set Evaluation
+    # Restore best checkpoint
+    best_ep, best_val = early_stopper.restore_best(model)
+    print(f"  --> Restored Best Model Checkpoint from Epoch {best_ep} (Val BCE = {best_val:.2f})")
+    
+    # Full Test Set Evaluation with Best Model
     model.eval()
     all_z, all_y, all_recons, all_x_flat = [], [], [], []
     with torch.no_grad():
@@ -232,7 +291,7 @@ for D in dims_to_test:
     final_bce = float(F.binary_cross_entropy(torch.tensor(Rec_all), torch.tensor(X_all), reduction='sum').item() / len(X_all))
     sil = float(silhouette_score(Z_all[:2000], Y_all[:2000]))
     
-    # Extract all decoded centroids without truncation
+    # Extract all decoded centroids with dynamic contrast normalization
     centroids_imgs = []
     with torch.no_grad():
         for k in range(model.prior.K):
@@ -246,11 +305,13 @@ for D in dims_to_test:
         "dim": D,
         "K": model.prior.K,
         "bce": final_bce,
-        "silhouette": sil
+        "silhouette": sil,
+        "best_epoch": best_ep,
+        "total_epochs": epochs_trained
     })
-    print(f"✓ FINISHED D={D:2d}D -> Discovered K*={model.prior.K:2d} | BCE={final_bce:.2f} nats | Silhouette={sil:.3f}")
+    print(f"✓ FINISHED D={D:2d}D -> K*={model.prior.K:2d} | BCE={final_bce:.2f} nats | Silhouette={sil:.3f} | Best Epoch={best_ep}/{epochs_trained}")
 
-print("\n--- Step 3/3: Generating Rate-Distortion Master Plot (D=3 to D=28) ---")
+print("\n--- Step 3/3: Generating Rate-Distortion Master Plot with Early Stopping ---")
 
 fig = plt.figure(figsize=(24, 16), facecolor='#0D1117')
 gs = GridSpec(3, 3, figure=fig, height_ratios=[1.2, 1.2, 1.4], hspace=0.36, wspace=0.25)
@@ -259,6 +320,7 @@ dims = [r["dim"] for r in results]
 ks = [r["K"] for r in results]
 bces = [r["bce"] for r in results]
 sils = [r["silhouette"] for r in results]
+best_eps = [r["best_epoch"] for r in results]
 
 # SUBPLOT 1: K* vs Latent Dimension D (The Rate-Distortion Trade-off Curve)
 ax1 = fig.add_subplot(gs[0, :2])
@@ -267,9 +329,9 @@ ax1.plot(dims, ks, color='#06B6D4', marker='o', linewidth=3.5, markersize=9, lab
 ax1.axvspan(2, 6.5, color='#EF4444', alpha=0.12, label='Low D: Codebook Tiling (VQ-VAE Regime, High K)')
 ax1.axvspan(6.5, 17, color='#F59E0B', alpha=0.12, label='Mid D: Hybrid Class + Style (Medium K)')
 ax1.axvspan(17, 30, color='#10B981', alpha=0.12, label='High D: Continuous Manifold (Stabilized K* ≈ 14)')
-for d, k in zip(dims, ks):
-    ax1.annotate(f"K={k}", (d, k), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontweight='bold', fontsize=10.5)
-ax1.set_title("1. Rate-Distortion Compensation: Discovered Clusters (K*) vs Latent Dimension (D)", color='white', fontsize=13, fontweight='bold', pad=12)
+for d, k, ep in zip(dims, ks, best_eps):
+    ax1.annotate(f"K={k}\n(ep {ep})", (d, k), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontweight='bold', fontsize=9.5)
+ax1.set_title("1. Rate-Distortion Compensation: Discovered Clusters (K*) vs Latent Dimension (D) [Early Stopping]", color='white', fontsize=13, fontweight='bold', pad=12)
 ax1.set_xlabel("Continuous Latent Dimension (D)", color='#9CA3AF', fontsize=11)
 ax1.set_ylabel("Discrete Prior Clusters (K*)", color='#9CA3AF', fontsize=11)
 ax1.grid(True, color='#30363D', linestyle='--', alpha=0.5)
@@ -282,7 +344,7 @@ ax2.set_facecolor('#161B22')
 ax2.plot(dims, bces, color='#F59E0B', marker='s', linewidth=3, markersize=8)
 for d, b in zip(dims, bces):
     ax2.annotate(f"{b:.1f}", (d, b), textcoords="offset points", xytext=(0, 8), ha='center', color='#F59E0B', fontsize=9)
-ax2.set_title("2. Reconstruction BCE Loss (nats)", color='white', fontsize=13, fontweight='bold', pad=12)
+ax2.set_title("2. Best Reconstruction BCE Loss (nats)", color='white', fontsize=13, fontweight='bold', pad=12)
 ax2.set_xlabel("Latent Dimension (D)", color='#9CA3AF', fontsize=11)
 ax2.set_ylabel("BCE Loss (nats)", color='#9CA3AF', fontsize=11)
 ax2.grid(True, color='#30363D', linestyle='--', alpha=0.5)
@@ -300,7 +362,7 @@ ax3.set_ylabel("Silhouette Score", color='#9CA3AF', fontsize=11)
 ax3.grid(True, color='#30363D', linestyle='--', alpha=0.5)
 ax3.tick_params(colors='#8B949E')
 
-# SUBPLOT 4: Updated Theoretical Explanation Card (Rate-Distortion & Capacity Trade-off)
+# SUBPLOT 4: Theoretical Explanation Card (Accurately Reflecting K* = 14)
 ax4 = fig.add_subplot(gs[1, 1:])
 ax4.set_facecolor('#161B22')
 ax4.axis('off')
@@ -309,12 +371,12 @@ RATE-DISTORTION & INFORMATION CAPACITY TRADE-OFF: Total Capacity = D x Bits + lo
 
 1. Low D (D ≤ 6) — Discrete Codebook Compensation (VQ-VAE Tiling):
    • The continuous bottleneck (3D-5D) lacks degrees of freedom to interpolate stroke styles.
-   • The IGMM prior compensates by spawning MORE discrete Gaussians (K ≈ 24-30),
+   • The IGMM prior compensates by spawning MORE discrete Gaussians (K ≈ 23-28),
      functioning as a high-capacity codebook of specialized local stroke patches.
 
 2. Mid D (8 ≤ D ≤ 16) — Balanced Hybrid Decomposition:
    • Continuous coordinates handle stroke variations, while discrete modes
-     isolate the 10 canonical digits plus dominant caligraphic sub-styles (K* ≈ 15-18).
+     isolate the canonical digits plus caligraphic sub-styles (K* ≈ 18-25).
 
 3. High D (D ≥ 20) — Manifold Unfolding & Canonical Modes (K* ≈ 14):
    • Ample continuous axes smoothly absorb continuous stroke deformations (thickness, tilt, scale).
@@ -325,7 +387,7 @@ RATE-DISTORTION & INFORMATION CAPACITY TRADE-OFF: Total Capacity = D x Bits + lo
 ax4.text(0.04, 0.5, explanation_text, color='#E5E7EB', fontsize=10.2, fontfamily='monospace', va='center',
          bbox=dict(boxstyle='round,pad=1.0', facecolor='#0D1117', edgecolor='#30363D', alpha=0.9))
 
-# SECTION 3 (Bottom): Visual Centroid Preview Across 5 Tested Dimensions (3D, 5D, 10D, 16D, 28D) - SHOWING ALL CLUSTERS
+# SECTION 3 (Bottom): Visual Centroid Preview Across 5 Tested Dimensions - SHOWING ALL CLUSTERS
 dims_to_show = [3, 5, 10, 16, 28]
 max_cols = max([len(decoded_centroids_by_dim.get(d, [])) for d in dims_to_show])
 inner_gs = gs[2, :].subgridspec(len(dims_to_show), max_cols, hspace=0.25, wspace=0.08)
@@ -348,9 +410,9 @@ for row_idx, d_val in enumerate(dims_to_show):
         if row_idx == 0 and (col_idx + 1) % 2 != 0:
             ax_img.set_title(f"C{col_idx+1}", color='#9CA3AF', fontsize=7.5)
 
-plt.suptitle("Rate-Distortion Balance: Continuous Capacity (D) vs Discrete Prior Codebook (K*)", color='white', fontsize=15, fontweight='bold', y=0.985)
+plt.suptitle("Rate-Distortion Balance: Continuous Capacity (D) vs Discrete Prior Codebook (K*) [Validation Early Stopping]", color='white', fontsize=15, fontweight='bold', y=0.985)
 output_path = "latent_dimension_vs_clusters_analysis.png"
 plt.savefig(output_path, dpi=150, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
 plt.close()
 
-print(f"\n✓ Saved updated Rate-Distortion {output_path} successfully (14 Epochs per dimension, D=3 to D=28)!")
+print(f"\n✓ Saved updated Rate-Distortion {output_path} successfully (Early Stopping with Max {max_epochs} Epochs)!")
