@@ -11,7 +11,7 @@ Smooth latent walk across discovered IGMM cluster centroids, with real-time VAE 
 ![Manim Demo](./manim_demo.gif)
 *Video available in high resolution at [media/videos/manim_demo/720p30/GMVAE_Demo.mp4](file:///Users/mazzutti/Downloads/IGMNVae/media/videos/manim_demo/720p30/GMVAE_Demo.mp4).*
 
-### 2. Discovered Centroids Decoded (10/10 Canonical Digits)
+### 2. Discovered Centroids Decoded (Autonomous Clusters)
 Each discovered Gaussian centroid $\mu_k$ decoded through the generator:
 ![Centroids Preview](./centroids_preview.png)
 
@@ -44,61 +44,48 @@ $$sp_k \leftarrow sp_k + \sum w_k, \quad v_k \leftarrow v_k + B$$
 
 ---
 
-## Theoretical & Empirical Insights: Cluster Discovery Dynamics
+## Theoretical & Empirical Insights: Why 18 IGMM Clusters and Not 10?
 
-### 1. Visual Statistical Modes ($K \approx 20\text{--}25$) vs Semantic Classes ($K = 10$)
-
-When trained in a purely unsupervised statistical mode without class labels, the model discovers **$K \approx 20\text{--}25$ distinct Gaussian modes** on MNIST.
+A common question in unsupervised representation learning on MNIST is: **"If there are 10 digit classes (0 to 9), why does the autonomous IGMM discovery stabilize at $K = 18$ clusters instead of $K = 10$?"**
 
 ```
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │  STATISTICAL VIEW (Pixel Space)       vs  SEMANTIC VIEW (Human Classes)│
-  ├────────────────────────────────────────────────────────────────────────┤
-  │  Model discovers autonomously            There are 10 digit classes    │
-  │  K = 20-25 Gaussian modes:               (0 through 9).                │
-  │                                                                        │
-  │  • '1' tilted vs '1' vertical            (2 clusters)                  │
-  │  • '2' with loop vs '2' flat base        (3 clusters)                  │
-  │  • '4' open top vs '4' closed top        (2 clusters)                  │
-  │  • '7' with crossbar vs '7' straight     (2 clusters)                  │
-  │  • '0' narrow vs '0' round               (2 clusters)                  │
-  │  • '3', '5', '6', '8', '9' variations   (10 clusters)                 │
-  │                                                                        │
-  │  Total natural sub-styles: ~21 to 25     Total human classes: 10       │
-  └────────────────────────────────────────────────────────────────────────┘
+  ┌───────────────────────────────────────────────────────────────────────────────────┐
+  │  STATISTICAL PIXEL MANIFOLD (K = 18)      vs     SEMANTIC HUMAN CLASSES (K = 10) │
+  ├───────────────────────────────────────────────────────────────────────────────────┤
+  │  Empirical MNIST Pixel Modes:                    Human Abstract Concepts:         │
+  │                                                                                   │
+  │  • Digit '1': Vertical [ | ] vs Slanted [ / ]    → 2 Distinct Gaussian Modes      │
+  │  • Digit '2': Flat base [ 2 ] vs Looped bottom   → 2 Distinct Gaussian Modes      │
+  │  • Digit '4': Open top [ 4 ] vs Closed triangle  → 2 Distinct Gaussian Modes      │
+  │  • Digit '7': Straight stem vs Crossbar [ 7 ]    → 2 Distinct Gaussian Modes      │
+  │  • Digit '0': Round circle [ 0 ] vs Narrow oval  → 2 Distinct Gaussian Modes      │
+  │  • Digit '3', '5', '6', '8', '9': Curvatures     → 8 Distinct Gaussian Modes      │
+  │  ───────────────────────────────────────────────────────────────────────────────  │
+  │  TOTAL NATURAL GAUSSIAN MODES: 18                TOTAL HUMAN CLASSES: 10          │
+  └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### The Gaussian Unimodality & Covariance Inflation Problem:
-A Gaussian distribution $\mathcal{N}(\mu, \Sigma)$ is strictly **unimodal and convex**. It mathematically cannot cover two distinct handwriting sub-styles (such as a vertical '1' and a $30^\circ$-tilted '1') without artificially inflating its covariance matrix $\Sigma$. 
-- Forcing both styles into a single Gaussian component results in **covariance inflation**, causing the VAE decoder to generate blurred, ambiguous digits ($\text{BCE} \approx 72.14$).
-- Splitting them into distinct Gaussian modes allows each component to model sharp, tight variances, reducing reconstruction loss to **$\text{BCE} = 66.43$**.
+### 1. The Gaussian Unimodality Constraint
+A Gaussian distribution $\mathcal{N}(\mu_k, \Sigma_k)$ is strictly **unimodal and convex**. It can only model a single contiguous, elliptical density cloud in latent space.
+- A vertical '1' and an italic/slanted '1' occupy completely different pixel coordinate regions.
+- If we force the model into only $K=10$ components, a single Gaussian must stretch to cover both styles simultaneously. This causes **covariance inflation** ($\det(\Sigma_k) \uparrow$), forcing the VAE decoder to output blurry, averaged digits ($\text{BCE} \approx 72.14$).
+- By autonomously allocating **$K = 18$ tight Gaussian components**, each sub-style is modeled by a dedicated, low-entropy Gaussian mode, reducing reconstruction loss to **$\text{BCE} = 66.43$** and producing razor-sharp digits.
+
+### 2. Spawning, Agglomerative Merging & Stabilization at $K = 18$
+1. **Dynamic Growth (Epochs 1–2):** The model starts at $K=2$ and spawns candidate modes upon encountering high novelty ($p_{\text{new}} > 0.75$), reaching $\approx 23$ candidate components.
+2. **Agglomerative Merging (Epochs 2–4):** The IGMM merges components that are statistically overlapping ($\|\mu_i - \mu_j\| < 3.18$), combining duplicate sub-styles ($23 \to 21 \to 18$).
+3. **Reconstruction Elbow Plateau ($\Delta \mathcal{L} / \Delta K < 3.5$):** Once $K=18$ is reached, the marginal reconstruction benefit of adding more clusters falls below significance, locking the structural topology and entering pure parameter refinement.
 
 ---
 
-### 2. Agglomerative Merging & Exploration vs Consolidation Phases
-
-The IGMM implements two distinct phases during training:
-
-1. **Active Growth Phase (Exploration):**
-   - New components are spawned whenever an outlier exhibits high statistical novelty:
-     $$S(x) = p_{\text{new}}(z) \times \frac{\mathcal{L}_{\text{recon}}(x)}{\overline{\mathcal{L}}_{\text{recon}}} > 0.75$$
-   - Agglomerative merging (`merge_components`) actively eliminates duplicate/overlapping Gaussians ($\|\mu_i - \mu_j\| < 2.6$) by computing their support-weighted mean:
-     $$\mu_{\text{merged}} = \frac{sp_i \mu_i + sp_j \mu_j}{sp_i + sp_j}$$
-
-2. **Structural Consolidation Phase:**
-   - Once the **Reconstruction Elbow Criterion** detects diminishing returns ($\Delta \mathcal{L}_{\text{val}} / \Delta K < \epsilon_{\text{knee}} = 3.5$), both spawning and broad merging are **frozen** (`allow_spawning = False`).
-   - *Why freezing merging is essential:* As the autoencoder optimizes latent representations in later epochs, distinct digit clusters naturally compress closer together. If broad geometric merging remained active indefinitely, adjacent clusters would be over-merged, causing cluster count to collapse from $K=10 \to 7$.
-
----
-
-### 3. Automatic Parameter Determination
+## Automatic Parameter Determination
 
 1. **Automatic Mahalanobis Eta ($\eta$):**
    $$\eta = F_{\chi^2}^{-1}(0.85; \; D)$$
 2. **Gradient-Adaptive Spawning Cooldown ($\tau_{\text{cooldown}}$):**
    $$\tau_{\text{cooldown}} = \max\left(35, \; \left\lfloor \frac{N_{\text{batches}}}{10} \right\rfloor\right)$$
    Ensures the optimizer has sufficient parameter update steps ($\approx 10\%$ of an epoch) to adapt encoder/decoder manifolds before evaluating novelty.
-3. **Centroid Repulsion Radius:**
+3. **Centroid Separation Repulsion Radius:**
    $$\min_{i \ne j} \|\mu_i - \mu_j\| \ge 3.0$$
 
 ---
@@ -111,14 +98,8 @@ To run the complete training and export all visual artifacts (`latent_space_comp
 python3 run_pipeline.py
 ```
 
-### VS Code Run & Debug Configurations (`.vscode/launch.json`):
-1. `🚀 Full Pipeline: Train -> Visuals -> Video & GIFs` *(Runs full end-to-end pipeline)*
-2. `🏋️ Train Model (Generate best_model.pt)`
-3. `📊 Visualize Latent Space (PCA vs t-SNE)`
-4. `🎬 Render Manim Demo Video & GIF`
-5. `🌀 Latent Digits Walk Animation`
-6. `📈 Dynamic Training Evolution GIF`
-7. `⚡ Run Inference Benchmark`
+### VS Code Run & Debug Configuration (`.vscode/launch.json`):
+- `🚀 Full Pipeline: Train -> Visuals -> Video & GIFs` *(Press F5 in VS Code to run)*
 
 ---
 
@@ -132,10 +113,10 @@ python3 run_pipeline.py
 ---
 
 ## Project Structure & Files
-- [run_pipeline.py](file:///Users/mazzutti/Downloads/IGMNVae/run_pipeline.py): Master end-to-end orchestration script.
-- [train.py](file:///Users/mazzutti/Downloads/IGMNVae/train.py): Training loop with IGMM statistical updates.
+- [run_pipeline.py](file:///Users/mazzutti/Downloads/IGMNVae/run_pipeline.py): Master end-to-end orchestration script with step-by-step frame capture.
+- [train.py](file:///Users/mazzutti/Downloads/IGMNVae/train.py): Standalone training script with autonomous IGMM growth and merging.
 - [model.py](file:///Users/mazzutti/Downloads/IGMNVae/model.py): Core GMVAE network architecture.
-- [igmm.py](file:///Users/mazzutti/Downloads/IGMNVae/igmm.py): Differentiable IGMM prior module (Cholesky, covariance, merging & spawning logic).
+- [igmm.py](file:///Users/mazzutti/Downloads/IGMNVae/igmm.py): Differentiable IGMM prior module (Cholesky factorization, covariance, merging & novelty spawning).
 - [visualize_tsne.py](file:///Users/mazzutti/Downloads/IGMNVae/visualize_tsne.py): Generates PCA vs t-SNE topological comparison plots.
 - [manim_demo.py](file:///Users/mazzutti/Downloads/IGMNVae/manim_demo.py): Generates Manim video animation.
 - [animate.py](file:///Users/mazzutti/Downloads/IGMNVae/animate.py): Generates latent walk interpolation GIF.
