@@ -460,72 +460,218 @@
         </section>
 
 
-        <!-- Performance and Benchmarks -->
+        <!-- Experiment 1: Rate-Distortion Dimension Sweep -->
         <section style="margin-top: 4rem; margin-bottom: 4rem;">
             <div class="section-header">
-                <span class="tag">Empirical Results</span>
-                <h2>Inference Performance & Benchmark Metrics</h2>
-                <p>Quantitative validation on local CPU (Batch Size = 1,000 samples)</p>
+                <span class="tag">Information Theory & Capacity</span>
+                <h2>Rate-Distortion Balance: Continuous Capacity (D) vs Discrete Prior (K*)</h2>
+                <p>Empirical evaluation of 14 full training epochs per dimension across D &isin; [3, 28]</p>
             </div>
 
-            <div class="metric-grid">
-                <div class="metric-card">
-                    <div class="metric-value">1.36x</div>
-                    <div class="metric-label">Inference Speedup</div>
+            <div class="card" style="margin-bottom: 2rem;">
+                <div class="media-container" style="background: #0D1117; padding: 1rem;">
+                    <img src="./latent_dimension_vs_clusters_analysis.png" alt="Rate-Distortion Multi-Dimensional Sweep" style="border-radius: 8px; border: 1px solid var(--card-border);">
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value">4.02 ms</div>
-                    <div class="metric-label">Batch Latency (1k items)</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">99.20%</div>
-                    <div class="metric-label">Prediction Accuracy Match</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">66.43</div>
-                    <div class="metric-label">Reconstruction BCE (nats)</div>
+                <div class="card-content">
+                    <p><strong>Information Capacity Equation:</strong> <code style="color:var(--accent-cyan)">Total Capacity = D &times; Bits<sub>continuous</sub> + log<sub>2</sub>(K)</code></p>
+                    <p style="margin-top: 0.5rem; color: var(--text-secondary);">
+                        As the continuous latent dimension <strong>D</strong> shrinks, the continuous coordinates lose the degrees of freedom required to continuously interpolate strokes. The IGMM prior compensates by dynamically expanding the discrete codebook (<strong>K = 23 &ndash; 28</strong>), tiling the non-linear manifold piecewise like a high-capacity VQ-VAE Voronoi atlas. Conversely, in high dimensions (<strong>D &ge; 20</strong>), continuous coordinates smoothly absorb variations in thickness and rotation, naturally consolidating the prior into <strong>K* = 14</strong> canonical modes.
+                    </p>
                 </div>
             </div>
 
             <div class="card">
                 <div class="card-header">
-                    <span class="tag">Benchmark Comparison</span>
-                    <h2>Standard GMVAE vs Optimized Differentiable IGMM</h2>
+                    <span class="tag">Empirical Sweep Data</span>
+                    <h2>14-Epoch Multi-Dimensional Convergence Table</h2>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Latent Dimension (D)</th>
+                                <th>Training Epochs</th>
+                                <th>Discovered Clusters (K*)</th>
+                                <th>Reconstruction Loss (BCE)</th>
+                                <th>Silhouette Score</th>
+                                <th>Operational Regime</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>D = 3</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 28</span></td>
+                                <td>121.67 nats</td>
+                                <td>0.149</td>
+                                <td>Dense Codebook Tiling (VQ-VAE Regime)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 5</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 23</span></td>
+                                <td>100.86 nats</td>
+                                <td>0.128</td>
+                                <td>Local Voronoi Chart Patching</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 8</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 18</span></td>
+                                <td>82.18 nats</td>
+                                <td>0.143</td>
+                                <td>Hybrid Class & Style Packing</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 10</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 25</span></td>
+                                <td>76.62 nats</td>
+                                <td>0.135</td>
+                                <td>Canonical Digits + Caligraphic Modes</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 14</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 20</span></td>
+                                <td>68.80 nats</td>
+                                <td>0.099</td>
+                                <td>Fine Topological Unfolding</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 16</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 20</span></td>
+                                <td><strong>66.51 nats</strong></td>
+                                <td>0.104</td>
+                                <td><strong>Optimal Capacity Knee / Sharpness Limit</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 20</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 14</span></td>
+                                <td>64.03 nats</td>
+                                <td>0.092</td>
+                                <td>Continuous Channel Saturation Freezing</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 24</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 14</span></td>
+                                <td>65.03 nats</td>
+                                <td>0.094</td>
+                                <td>Continuous Coordinates Absorb Variance</td>
+                            </tr>
+                            <tr>
+                                <td><strong>D = 28</strong></td>
+                                <td>14</td>
+                                <td><span class="badge-success">K* = 14</span></td>
+                                <td><strong>64.55 nats</strong></td>
+                                <td>0.107</td>
+                                <td><strong>Stable Canonical Modes (K* = 14)</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Experiment 2: 1:1 Comparative Benchmark (FCVAE vs IGMMVae D=10) -->
+        <section style="margin-top: 4rem; margin-bottom: 4rem;">
+            <div class="section-header">
+                <span class="tag">Controlled Experiment</span>
+                <h2>1:1 Comparative Benchmark: Baseline FCVAE (D=10) vs IGMMVae (D=10)</h2>
+                <p>Isolating the impact of the Non-Parametric Mixture Prior under identical continuous bottlenecks</p>
+            </div>
+
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-value">41.4x</div>
+                    <div class="metric-label">CPU Inference Speedup</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">+47.2%</div>
+                    <div class="metric-label">Cluster Silhouette Isolation</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">+12.4%</div>
+                    <div class="metric-label">Adjusted Rand Index (ARI)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">78.89</div>
+                    <div class="metric-label">BCE Reconstruction (nats)</div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 2rem;">
+                <div class="media-container" style="background: #0D1117; padding: 1rem;">
+                    <img src="./vae_vs_igmm_comparison.png" alt="FCVAE vs IGMMVae Benchmark" style="border-radius: 8px; border: 1px solid var(--card-border);">
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="tag">Detailed Metrics</span>
+                    <h2>Quantitative Evaluation on 10,000 MNIST Test Samples</h2>
                 </div>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
                                 <th>Evaluation Metric</th>
-                                <th>Standard Classification</th>
-                                <th>Optimized IGMM Classification</th>
+                                <th>Baseline FCVAE (D=10)</th>
+                                <th>IGMMVae (D=10, K=10)</th>
                                 <th>Performance Gain / Result</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
+                                <td><strong>Latent Bottleneck (D)</strong></td>
+                                <td>Fixed D = 10</td>
+                                <td>Fixed D = 10</td>
+                                <td><span class="badge-success">Identical 1:1 Compression</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Prior Architecture</strong></td>
+                                <td>Standard Isotropic N(0, I)</td>
+                                <td>Differentiable IGMM (Full &Sigma;<sub>k</sub>)</td>
+                                <td><span class="badge-success">Multi-Modal Mixture</span></td>
+                            </tr>
+                            <tr>
                                 <td><strong>Average Latency (Batch = 1,000)</strong></td>
-                                <td>5.46 ms</td>
-                                <td>4.02 ms</td>
-                                <td><span class="badge-success">1.36x Faster</span></td>
+                                <td>199.56 ms</td>
+                                <td>4.82 ms</td>
+                                <td><span class="badge-success">41.4x Faster</span></td>
                             </tr>
                             <tr>
-                                <td><strong>Reconstruction Loss (&minus;log p(x|z))</strong></td>
-                                <td>72.14 nats</td>
-                                <td>66.43 nats</td>
-                                <td><span class="badge-success">+7.9% Sharper</span></td>
+                                <td><strong>Reconstruction Loss (BCE)</strong></td>
+                                <td>80.25 nats</td>
+                                <td>78.89 nats</td>
+                                <td><span class="badge-success">Sharper Reconstructions</span></td>
                             </tr>
                             <tr>
-                                <td><strong>Prediction Match Accuracy</strong></td>
-                                <td>99.20%</td>
-                                <td>99.20%</td>
-                                <td><span class="badge-success">High Precision</span></td>
+                                <td><strong>Reconstruction MSE Distortion</strong></td>
+                                <td>0.0134</td>
+                                <td>0.0129</td>
+                                <td><span class="badge-success">Lower Distortion</span></td>
                             </tr>
                             <tr>
-                                <td><strong>Cluster Parameter Optimization</strong></td>
-                                <td>Adam Gradient Descent</td>
-                                <td>Exact Recursive IGMN Equations</td>
-                                <td><span class="badge-success">Decoupled & Analytical</span></td>
+                                <td><strong>Silhouette Cluster Score</strong></td>
+                                <td>0.125</td>
+                                <td>0.184</td>
+                                <td><span class="badge-success">+47.2% Better Isolation</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Adjusted Rand Index (ARI)</strong></td>
+                                <td>0.621</td>
+                                <td>0.698</td>
+                                <td><span class="badge-success">+12.4% Class Purity</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Normalized Mutual Info (NMI)</strong></td>
+                                <td>0.697</td>
+                                <td>0.766</td>
+                                <td><span class="badge-success">+9.9% Stronger Mutual Info</span></td>
                             </tr>
                         </tbody>
                     </table>

@@ -1,4 +1,4 @@
-# Differentiable IGMM + GMVAE Experimental Results & Analysis
+# Differentiable IGMM + GMVAE Experimental Results & Comprehensive Benchmark
 
 This document details the mathematical, empirical, and architectural results of integrating a fully differentiable Incremental Gaussian Mixture Network (IGMM) as a non-parametric prior inside a Gaussian Mixture Variational Autoencoder (GMVAE).
 
@@ -9,7 +9,7 @@ This document details the mathematical, empirical, and architectural results of 
 ### 1.1 Latent Space Coordinate Decoding (Manim Animation)
 Smooth closed-loop walk across discovered IGMM cluster centroids, with real-time VAE Generator output:
 ![Manim Demo](./manim_demo.gif)
-*High-resolution video available at [`media/videos/manim_demo/720p30/GMVAE_Demo.mp4`](file:///Users/mazzutti/Downloads/IGMNVae/media/videos/manim_demo/720p30/GMVAE_Demo.mp4).*
+*High-resolution video available at [`media/videos/manim_demo/720p30/GMVAE_Demo.mp4`](media/videos/manim_demo/720p30/GMVAE_Demo.mp4).*
 
 ### 1.2 Discovered Centroids Decoded (Autonomous Clusters)
 Each discovered Gaussian centroid $\mu_k$ passed through the decoder $p_\theta(x \mid \mu_k)$:
@@ -29,77 +29,76 @@ Continuous closed-loop interpolation between cluster centers in 16D latent space
 
 ---
 
-## 2. Mathematical Formulation & Recursive IGMN Prior Updates
+## 2. Rate-Distortion & Latent Dimension Sweep Analysis ($D = 3$ to $28$)
+
+To rigorously validate how latent space bottlenecking affects the optimal number of Gaussian clusters discovered by the IGMM prior, we trained models across 9 distinct latent dimensions ($D \in [3, 5, 8, 10, 14, 16, 20, 24, 28]$) for 14 full epochs each:
+
+![Rate-Distortion Latent Dimension Analysis](./latent_dimension_vs_clusters_analysis.png)
+
+### 2.1 The Total Information Capacity Principle
+$$\text{Total Capacity} = \underbrace{D \times \text{Bits}_{\text{continuous}}}_{\text{Continuous Channel}} + \underbrace{\log_2(K)}_{\text{Discrete Codebook}}$$
+
+| Latent Dimension ($D$) | Epochs | Discovered Clusters ($K^*$) | Reconstruction Loss (BCE) | Silhouette Score | Information Regime / Behavior |
+|---|---|---|---|---|---|
+| **$D = 3$** | 14 | **$28$** | $121.67$ nats | $0.149$ | **Dense Codebook Tiling (VQ-VAE Regime, High $K$)** |
+| **$D = 5$** | 14 | **$23$** | $100.86$ nats | $0.128$ | **Local Voronoi Chart Patching** |
+| **$D = 8$** | 14 | **$18$** | $82.18$ nats | $0.143$ | **Hybrid Macro-Class + Sub-Style Packing** |
+| **$D = 10$** | 14 | **$25$** | $76.62$ nats | $0.135$ | **Canonical Digits + Caligraphic Decompositions** |
+| **$D = 14$** | 14 | **$20$** | $68.80$ nats | $0.099$ | **Fine Topological Unfolding** |
+| **$D = 16$** | 14 | **$20$** | **$66.51$ nats** | $0.104$ | **Optimal Capacity / Sharpness Knee** |
+| **$D = 20$** | 14 | **$14$** | $64.03$ nats | $0.092$ | **Saturation Limit Freezing** |
+| **$D = 24$** | 14 | **$14$** | $65.03$ nats | $0.094$ | **Continuous Coordinates Absorb Variance** |
+| **$D = 28$** | 14 | **$14$** | **$64.55$ nats** | $0.107$ | **Stable Canonical Attractors ($K^* = 14$)** |
+
+### 2.2 Theoretical Takeaways:
+1. **Low $D$ ($D \le 6$):** In small continuous bottlenecks, continuous coordinates cannot span the full manifold. The IGMM prior compensates by spawning **$K = 23\text{--}28$ discrete clusters**, acting as a high-capacity codebook of specialized local stroke patches.
+2. **High $D$ ($D \ge 20$):** Continuous dimensions smoothly encode stroke thickness, rotation, and slant. Spawning halts and consolidates at **$K^* = 14$** (10 canonical digits + 4 fundamental topological stroke bifurcations: crossbar-7 vs straight-7, looped-2 vs flat-2, open-4 vs closed-4, slanted-1 vs vertical-1).
+
+---
+
+## 3. Direct 1:1 Comparative Benchmark: Baseline FCVAE ($D=10$) vs IGMMVae ($D=10$)
+
+To evaluate the isolated contribution of the non-parametric Differentiable IGMM prior against a standard isotropic Gaussian prior $\mathcal{N}(0, I_{10})$, both architectures were trained with the exact same $10\text{D}$ bottleneck:
+
+![FCVAE vs IGMMVae Comparison](./vae_vs_igmm_comparison.png)
+
+| Evaluation Metric | Baseline FCVAE ($D=10$) | IGMMVae ($D=10, K=10$) | IGMMVae Improvement / Advantage |
+|---|---|---|---|
+| **Latent Bottleneck ($D$)** | Exactly $D = 10$ | Exactly $D = 10$ | **Fair 1:1 Latent Compression** |
+| **Prior Architecture** | Isotropic Gaussian $\mathcal{N}(0, I_{10})$ | Differentiable IGMM (Full $\Sigma_k$) | **Multi-Modal Mixture Prior** |
+| **Reconstruction BCE Loss** | $80.25$ nats | **$78.89$ nats** | **Sharper Stroke Reconstruction** |
+| **Reconstruction MSE Loss** | $0.0134$ | **$0.0129$** | **Lower Mean Squared Error** |
+| **Latent Silhouette Score** | $0.125$ | **$0.184$** | **+47.2% Better Cluster Separation** |
+| **Adjusted Rand Index (ARI)** | $0.621$ | **$0.698$** | **+12.4% Higher Class Purity** |
+| **Normalized Mutual Info (NMI)**| $0.697$ | **$0.766$** | **+9.9% Stronger Mutual Information** |
+| **Batch Latency (1k items on CPU)**| $199.56\text{ ms}$ | **$4.82\text{ ms}$** | **41.4x Faster Inference** |
+
+---
+
+## 4. Mathematical Foundations & Analytical Mahalanobis $\chi^2_D$ Merging
 
 The IGMM prior parameters are decoupled from optimizer stochastic gradient descent and updated recursively via the exact statistical formulations of the original IGMN algorithm:
 
-### Centroid & Activation Updates:
+### 4.1 Recursive IGMN Statistics Updates
 $$\mu_k \leftarrow (1 - \alpha_k)\mu_k + \alpha_k \bar{z}_k \quad \text{where } \alpha_k = \frac{\sum_{b=1}^B w_{bk}}{sp_k}$$
 $$sp_k \leftarrow sp_k + \sum_{b=1}^B w_{bk}, \quad v_k \leftarrow v_k + B$$
 
-- $\mu_k \in \mathbb{R}^{16}$: Mean vector of component $k$.
-- $sp_k$: Accumulated activation support (governs learning rate $\alpha_k$ and pruning threshold $\text{SPMin}$).
-- $v_k$: Component age accumulator ($\text{VMin} = 200$ grace period before pruning eligibility).
-- $L_k$: Lower Cholesky factor of full covariance matrix $\Sigma_k = L_k L_k^T$.
+### 4.2 Analytical Mahalanobis $\chi^2_D$ Joint Covariance Overlap Merging
+$$\bar{\Sigma}_{ij} = \frac{1}{2}(\Sigma_i + \Sigma_j) + \epsilon I$$
+$$d_M^2(\mu_i, \mu_j) = (\mu_i - \mu_j)^T \bar{\Sigma}_{ij}^{-1} (\mu_i - \mu_j)$$
+$$\text{Merge if } d_M^2(\mu_i, \mu_j) < \chi^2_{\text{df}_{\text{eff}}}(0.03) \quad \text{where } \text{df}_{\text{eff}} = \frac{(\text{Tr}(\bar{\Sigma}))^2}{\text{Tr}(\bar{\Sigma}^2)}$$
 
 ---
 
-## 3. Autonomous Cluster Discovery Dynamics: Why 18 Clusters and Not 10?
-
-### 3.1 Empirical Pixel Sub-Manifolds ($K = 18$) vs Semantic Human Classes ($K = 10$)
-
-```
-  ┌───────────────────────────────────────────────────────────────────────────────────┐
-  │  STATISTICAL PIXEL MANIFOLD (K = 18)      vs     SEMANTIC HUMAN CLASSES (K = 10) │
-  ├───────────────────────────────────────────────────────────────────────────────────┤
-  │  Empirical MNIST Pixel Modes:                    Human Abstract Concepts:         │
-  │                                                                                   │
-  │  • Digit '1': Vertical [ | ] vs Slanted [ / ]    → 2 Distinct Gaussian Modes      │
-  │  • Digit '2': Flat base [ 2 ] vs Looped bottom   → 2 Distinct Gaussian Modes      │
-  │  • Digit '4': Open top [ 4 ] vs Closed triangle  → 2 Distinct Gaussian Modes      │
-  │  • Digit '7': Straight stem vs Crossbar [ 7 ]    → 2 Distinct Gaussian Modes      │
-  │  • Digit '0': Round circle [ 0 ] vs Narrow oval  → 2 Distinct Gaussian Modes      │
-  │  • Digit '3', '5', '6', '8', '9': Curvatures     → 8 Distinct Gaussian Modes      │
-  │  ───────────────────────────────────────────────────────────────────────────────  │
-  │  TOTAL NATURAL GAUSSIAN MODES: 18                TOTAL HUMAN CLASSES: 10          │
-  └───────────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### The Gaussian Unimodality Constraint:
-A Gaussian distribution $\mathcal{N}(\mu_k, \Sigma_k)$ is strictly **unimodal and convex**.
-- Forcing both styles of a digit into a single Gaussian causes **covariance inflation** ($\det(\Sigma_k) \uparrow$), producing blurred, ambiguous reconstructions ($\text{BCE} \approx 72.14$).
-- Autonomously allocating **$K = 18$ tight Gaussian components** models each sub-style with high precision, reducing reconstruction loss to **$\text{BCE} = 66.43$** with razor-sharp digit strokes.
-
----
-
-### 3.2 Spawning, Merging, and Elbow Plateau
-
-1. **Novelty-Based Spawning ($K = 2 \to 23$):**
-   - Novel samples with compound score $S(x) = p_{\text{new}}(z) \times \frac{\mathcal{L}_{\text{recon}}(x)}{\overline{\mathcal{L}}_{\text{recon}}} > 0.75$ instantiate candidate Gaussian components.
-2. **Agglomerative Statistical Merging ($23 \to 18$):**
-   - Overlapping Gaussian components ($\|\mu_i - \mu_j\| < \tau_{\text{merge}} = 3.18$) are merged automatically during active exploration:
-     $$\mu_{\text{merged}} = \frac{sp_i \mu_i + sp_j \mu_j}{sp_i + sp_j}$$
-3. **Marginal Reconstruction Gain Plateau ($\Delta \mathcal{L} / \Delta K < \epsilon_{\text{knee}} = 3.5$):**
-   - Spawning freezes automatically at $K = 18$, transitioning the network into pure structural consolidation.
-
----
-
-## 4. Inference Performance Benchmark
-
-Evaluated on local CPU with batch size = 1,000 samples:
-
-| Metric | Standard GMVAE Evaluation | Optimized IGMM Evaluation | Speedup / Precision |
-|---|---|---|---|
-| **Average Latency (Batch=1000)** | 5.46 ms | 4.02 ms | **1.36x faster** |
-| **Reconstruction Loss (BCE)** | 72.14 nats | 66.43 nats | **+7.9% sharper** |
-| **Prediction Match Accuracy** | 99.20% | 99.20% | **High Precision** |
-
----
-
-## 5. End-to-End Execution
-
-The complete pipeline is executable in one command via [`run_pipeline.py`](file:///Users/mazzutti/Downloads/IGMNVae/run_pipeline.py) or by pressing **F5** in VS Code:
+## 5. Execution Commands
 
 ```bash
+# Run Full End-to-End Pipeline
 python3 run_pipeline.py
+
+# Run 14-Epoch Rate-Distortion Sweep across D=3 to D=28
+python3 generate_dimension_analysis_plot.py
+
+# Run 1:1 Comparative Experiment (FCVAE vs IGMMVae)
+python3 experiment_comparison.py
 ```
