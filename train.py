@@ -135,6 +135,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=14, help="Number of training epochs")
     parser.add_argument("--latent_dim", type=int, default=16, help="Initial maximum latent dimension")
     parser.add_argument("--initial_K", type=int, default=2, help="Initial number of IGMM components")
+    parser.add_argument("--force_k", type=int, default=None, help="Force a fixed number of clusters (e.g. 10), disabling dynamic spawning and merging")
     parser.add_argument("--batch_size", type=int, default=128, help="Training batch size")
     parser.add_argument("--elbow_threshold", type=float, default=3.5,
                         help="Reconstruction marginal gain threshold (nats/cluster) for autonomous Elbow/Knee detection")
@@ -168,13 +169,22 @@ def main():
     spawn_cooldown = max(35, len(train_loader) // 10)
     print(f"Automatic Gradient-Adaptive Spawn Cooldown: {spawn_cooldown} steps")
     
+    effective_k = args.force_k if args.force_k is not None else args.initial_K
     model = GMVAE(
         input_dim=784,
         hidden_dim=512,
         latent_dim=args.latent_dim,
-        initial_K=args.initial_K,
+        initial_K=effective_k,
         covariance_type=args.covariance_type
     ).to(device)
+    
+    if args.force_k is not None:
+        with torch.no_grad():
+            for k in range(args.force_k):
+                vec = torch.zeros(args.latent_dim)
+                if k < args.latent_dim:
+                    vec[k] = 3.5
+                model.prior.means.data[k] = vec
     
     ae_params = list(model.encoder_module.parameters()) + list(model.decoder_module.parameters()) + [model.prior.L_params]
     optimizer = optim.Adam(ae_params, lr=1.2e-3)
@@ -182,7 +192,7 @@ def main():
     
     step_count = 0
     last_spawn_step = -spawn_cooldown
-    allow_spawning = True
+    allow_spawning = True if args.force_k is None else False
     prev_val_loss = None
     prev_K = args.initial_K
     best_val_loss = float('inf')
@@ -312,7 +322,7 @@ def main():
         prev_K = current_K
         
         # Merge overlapping components during active exploration
-        if epoch <= 6:
+        if args.force_k is None and epoch <= 6:
             while model.prior.merge_components(merge_dist_threshold=args.merge_dist):
                 ae_params = list(model.encoder_module.parameters()) + list(model.decoder_module.parameters()) + [model.prior.L_params]
                 current_lr = optimizer.param_groups[0]['lr']

@@ -2,10 +2,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "🚀 Full Pipeline: Train -> Visuals -> Video & GIFs",
+            "name": "🚀 Full Pipeline (Autonomous Discovery -> Visuals & Video)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run_pipeline.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🎯 Train Model (Forced K=10 Canonical Digits)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "args": [
+                "--force_k", "10",
+                "--epochs", "14",
+                "--latent_dim", "16"
+            ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
         }
