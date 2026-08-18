@@ -28,9 +28,9 @@ train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
 
 dims_to_test = [3, 5, 8, 10, 14, 16, 20, 24, 28]
-max_epochs = 25
-patience = 3
-min_delta = 0.10
+max_epochs = 50
+patience = 5
+min_delta = 0.08
 
 class EarlyStopping:
     def __init__(self, patience=3, min_delta=0.10):

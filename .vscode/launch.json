@@ -10,9 +10,9 @@
                 "--latent_dim",
                 "16",
                 "--epochs",
-                "25",
+                "50",
                 "--patience",
-                "4"
+                "5"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
@@ -28,9 +28,9 @@
                 "--latent_dim",
                 "10",
                 "--epochs",
-                "25",
+                "50",
                 "--patience",
-                "4"
+                "5"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
@@ -58,9 +58,9 @@
             "program": "${workspaceFolder}/train.py",
             "args": [
                 "--epochs",
-                "25",
+                "50",
                 "--patience",
-                "4",
+                "5",
                 "--min_delta",
                 "0.10"
             ],

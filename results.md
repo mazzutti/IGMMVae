@@ -38,17 +38,17 @@ To rigorously validate how latent space bottlenecking affects the optimal number
 ### 2.1 The Total Information Capacity Principle
 $$\text{Total Capacity} = \underbrace{D \times \text{Bits}_{\text{continuous}}}_{\text{Continuous Channel}} + \underbrace{\log_2(K)}_{\text{Discrete Codebook}}$$
 
-| Latent Dimension ($D$) | Best Epoch | Discovered Clusters ($K^*$) | Reconstruction Loss (BCE) | Silhouette Score | Information Regime / Behavior |
+| Latent Dimension ($D$) | Best Epoch / Total | Discovered Clusters ($K^*$) | Reconstruction Loss (BCE) | Silhouette Score | Information Regime / Behavior |
 |---|---|---|---|---|---|
-| **$D = 3$** | Ep 15/18 | **$28$** | $120.45$ nats | $0.149$ | **Dense Codebook Tiling (VQ-VAE Regime, High $K$)** |
-| **$D = 5$** | Ep 17/20 | **$23$** | $99.82$ nats | $0.128$ | **Local Voronoi Chart Patching** |
-| **$D = 8$** | Ep 18/21 | **$18$** | $80.74$ nats | $0.143$ | **Hybrid Macro-Class + Sub-Style Packing** |
-| **$D = 10$** | Ep 19/22 | **$25$** | $74.92$ nats | $0.135$ | **Canonical Digits + Caligraphic Decompositions** |
-| **$D = 14$** | Ep 19/22 | **$20$** | $67.80$ nats | $0.106$ | **Fine Topological Unfolding** |
-| **$D = 16$** | Ep 20/23 | **$20$** | **$65.27$ nats** | $0.106$ | **Optimal Capacity / Sharpness Knee** |
-| **$D = 20$** | Ep 22/25 | **$14$** | $62.85$ nats | $0.093$ | **Saturation Limit Freezing** |
-| **$D = 24$** | Ep 25/25 | **$14$** | $62.11$ nats | $0.099$ | **Continuous Coordinates Absorb Variance** |
-| **$D = 28$** | Ep 22/25 | **$14$** | **$62.31$ nats** | $0.111$ | **Stable Canonical Attractors ($K^* = 14$)** |
+| **$D = 3$** | Ep 15 / 20 | **$28$** | $120.45$ nats | $0.149$ | **Dense Codebook Tiling (VQ-VAE Regime, High $K$)** |
+| **$D = 5$** | Ep 17 / 22 | **$23$** | $99.82$ nats | $0.128$ | **Local Voronoi Chart Patching** |
+| **$D = 8$** | Ep 18 / 23 | **$18$** | $80.74$ nats | $0.143$ | **Hybrid Macro-Class + Sub-Style Packing** |
+| **$D = 10$** | Ep 19 / 24 | **$25$** | $74.92$ nats | $0.135$ | **Canonical Digits + Caligraphic Decompositions** |
+| **$D = 14$** | Ep 19 / 24 | **$20$** | $67.80$ nats | $0.106$ | **Fine Topological Unfolding** |
+| **$D = 16$** | Ep 20 / 25 | **$20$** | **$65.27$ nats** | $0.106$ | **Optimal Capacity / Sharpness Knee** |
+| **$D = 20$** | Ep 26 / 31 | **$14$** | $62.74$ nats | $0.093$ | **Saturation Limit Freezing** |
+| **$D = 24$** | Ep 33 / 38 | **$14$** | **$61.74$ nats** | $0.100$ | **Continuous Coordinates Absorb Variance** |
+| **$D = 28$** | Ep 32 / 37 | **$14$** | **$61.91$ nats** | $0.112$ | **Stable Canonical Attractors ($K^* = 14$)** |
 
 ### 2.2 Theoretical Takeaways:
 1. **Low $D$ ($D \le 6$):** In small continuous bottlenecks, continuous coordinates cannot span the full manifold. The IGMM prior compensates by spawning **$K = 23\text{--}28$ discrete clusters**, acting as a high-capacity codebook of specialized local stroke patches.

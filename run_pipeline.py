@@ -152,7 +152,7 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, lr, action
     plt.close(fig)
     return img
 
-def step1_train_best_model(force_k=None, epochs=25, latent_dim=16, patience=4, min_delta=0.10):
+def step1_train_best_model(force_k=None, epochs=50, latent_dim=16, patience=5, min_delta=0.08):
     mode_str = f"Forced Canonical K={force_k}" if force_k is not None else "Autonomous K Discovery"
     print_header(f"Step 1/5: Training GMVAE + Differentiable IGMM ({mode_str})")
     device = torch.device("cpu")
