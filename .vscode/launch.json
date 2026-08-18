@@ -10,14 +10,12 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "🎯 Train Model (Forced K=10 Canonical Digits)",
+            "name": "🎯 Full Pipeline (Forced K=10 Canonical -> Visuals & Video)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/train.py",
+            "program": "${workspaceFolder}/run_pipeline.py",
             "args": [
-                "--force_k", "10",
-                "--epochs", "14",
-                "--latent_dim", "16"
+                "--force_k", "10"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"

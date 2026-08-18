@@ -152,8 +152,9 @@ def get_plot_frame(model, test_loader, device, step, epoch, val_loss, lr, action
     plt.close(fig)
     return img
 
-def step1_train_best_model():
-    print_header("Step 1/5: Autonomous Training with Step-by-Step Evolution Recording")
+def step1_train_best_model(force_k=None, epochs=14):
+    mode_str = f"Forced Canonical K={force_k}" if force_k is not None else "Autonomous K Discovery"
+    print_header(f"Step 1/5: Training GMVAE + Differentiable IGMM ({mode_str})")
     device = torch.device("cpu")
     
     torch.manual_seed(42)
@@ -167,7 +168,7 @@ def step1_train_best_model():
     test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
     
     latent_dim = 16
-    initial_K = 2
+    initial_K = force_k if force_k is not None else 2
     spawn_cooldown = max(35, len(train_loader) // 10)
     epsilon_knee = 3.5
     merge_dist_threshold = 3.18
@@ -184,6 +185,14 @@ def step1_train_best_model():
         covariance_type="full"
     ).to(device)
     
+    if force_k is not None:
+        with torch.no_grad():
+            for k in range(force_k):
+                vec = torch.zeros(latent_dim)
+                if k < latent_dim:
+                    vec[k] = 3.5
+                model.prior.means.data[k] = vec
+    
     ae_params = list(model.encoder_module.parameters()) + list(model.decoder_module.parameters()) + [model.prior.L_params]
     optimizer = optim.Adam(ae_params, lr=1.2e-3)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
@@ -194,7 +203,7 @@ def step1_train_best_model():
     
     step_count = 0
     last_spawn_step = -spawn_cooldown
-    allow_spawning = True
+    allow_spawning = True if force_k is None else False
     prev_val_loss = None
     prev_K = initial_K
     
@@ -335,7 +344,7 @@ def step1_train_best_model():
         prev_K = current_K
         
         # Merge duplicates only during active growth phase
-        if epoch <= 6:
+        if force_k is None and epoch <= 6:
             merged_any = False
             while model.prior.merge_components(merge_dist_threshold=merge_dist_threshold):
                 merged_any = True
@@ -413,10 +422,17 @@ def step5_benchmark():
     subprocess.run([sys.executable, "benchmark.py"], check=True)
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Run Full GMVAE + IGMM Pipeline")
+    parser.add_argument("--force_k", type=int, default=None, help="Force a fixed number of clusters (e.g. 10)")
+    parser.add_argument("--epochs", type=int, default=14, help="Number of training epochs")
+    args = parser.parse_args()
+
     start_time = time.time()
-    print("\n🚀 STARTING FULL AUTONOMOUS GMVAE + IGMM PIPELINE")
+    mode_title = f"FORCED K={args.force_k} CANONICAL" if args.force_k is not None else "AUTONOMOUS K DISCOVERY"
+    print(f"\n🚀 STARTING FULL GMVAE + IGMM PIPELINE ({mode_title})")
     
-    step1_train_best_model()
+    step1_train_best_model(force_k=args.force_k, epochs=args.epochs)
     step2_visualize_latent_space()
     step3_generate_gifs()
     step4_generate_manim_video()
