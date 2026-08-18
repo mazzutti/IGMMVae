@@ -195,7 +195,11 @@ def main():
     allow_spawning = True if args.force_k is None else False
     prev_val_loss = None
     prev_K = args.initial_K
+    import copy
     best_val_loss = float('inf')
+    best_epoch = 0
+    patience_counter = 0
+    best_state = None
     
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -329,11 +333,44 @@ def main():
                 optimizer = optim.Adam(ae_params, lr=current_lr)
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
                 
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss - args.min_delta:
             best_val_loss = val_loss
+            best_epoch = epoch
+            patience_counter = 0
+            best_state = {
+                'encoder': copy.deepcopy(model.encoder_module.state_dict()),
+                'decoder': copy.deepcopy(model.decoder_module.state_dict()),
+                'means': model.prior.means.data.clone(),
+                'sp': model.prior.sp.clone(),
+                'v': model.prior.v.clone(),
+                'K': model.prior.K,
+                'pi_logits': model.prior.pi_logits.data.clone(),
+                'L_params': model.prior.L_params.data.clone() if model.prior.covariance_type == "full" else None,
+                'logvars': model.prior.logvars.data.clone() if model.prior.covariance_type == "diagonal" else None
+            }
             torch.save(model.state_dict(), "best_model.pt")
             print(f"  ==> Saved best model checkpoint to best_model.pt (Val Loss: {best_val_loss:.2f})")
-            
+        else:
+            patience_counter += 1
+            if patience_counter >= args.patience:
+                print(f"\n[Early Stopping Triggered] Validation loss failed to improve for {args.patience} epochs. Stopping at epoch {epoch}.")
+                break
+                
+    # Restore best checkpoint
+    if best_state is not None:
+        model.encoder_module.load_state_dict(best_state['encoder'])
+        model.decoder_module.load_state_dict(best_state['decoder'])
+        model.prior.K = best_state['K']
+        model.prior.means = nn.Parameter(best_state['means'])
+        model.prior.sp = best_state['sp']
+        model.prior.v = best_state['v']
+        model.prior.pi_logits = nn.Parameter(best_state['pi_logits'])
+        if best_state['L_params'] is not None:
+            model.prior.L_params = nn.Parameter(best_state['L_params'])
+        if best_state['logvars'] is not None:
+            model.prior.logvars = nn.Parameter(best_state['logvars'])
+        print(f"  --> Restored Best Model State from Epoch {best_epoch} (Val Loss: {best_val_loss:.2f})")
+        
     print(f"\nTraining complete! Optimal Discovered K: {model.prior.K}")
 
 if __name__ == "__main__":
