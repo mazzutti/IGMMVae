@@ -170,8 +170,10 @@ def step1_train_best_model(force_k=None, epochs=14, latent_dim=16):
     initial_K = force_k if force_k is not None else 2
     spawn_cooldown = max(35, len(train_loader) // 10)
     epsilon_knee = 3.5
-    merge_dist_threshold = 3.18
-    min_spawn_dist = 2.4
+    # Dimension-scaled geometric thresholds (Curse of Dimensionality / Hypersphere volume scaling)
+    dim_scale = (latent_dim / 16.0) ** 0.5
+    merge_dist_threshold = 3.18 * dim_scale
+    min_spawn_dist = 2.4 * dim_scale
     
     # Step capture interval: capture snapshots every 60 batches during training
     capture_step_interval = 60
